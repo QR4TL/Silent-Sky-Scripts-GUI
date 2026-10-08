@@ -12,7 +12,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local DEFAULT_EXPANDED_SIZE = UDim2.new(0, 600, 0, 420)
 local MIN_W, MIN_H          = 260, 180
 local SMOOTHNESS            = 0.35
-local BUBBLE_COUNT          = 350
+local BUBBLE_COUNT          = 350 -- Bubbles are back!
 local BUBBLE_PADDING        = 60
 local BUBBLE_SPEED_MIN      = 25
 local BUBBLE_SPEED_MAX      = 75
@@ -64,7 +64,7 @@ task.spawn(function()
 end)
 
 -- ============================================================
---  LOADING SCREEN
+--  LOADING SCREEN (no fades)
 -- ============================================================
 local function showLoadingScreen()
     local DURATION = 5.0
@@ -81,13 +81,13 @@ local function showLoadingScreen()
     backdrop.Size = UDim2.new(1, 0, 1, 0)
     backdrop.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     backdrop.BorderSizePixel = 0
-    backdrop.BackgroundTransparency = 1
+    backdrop.BackgroundTransparency = 0
     backdrop.Parent = loadGui
 
     local backdropGradient = Instance.new("UIGradient")
     backdropGradient.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 150)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 150, 200)),
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 150)), -- Yellow
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 150, 200)), -- Pink
     })
     backdropGradient.Rotation = 135
     backdropGradient.Parent = backdrop
@@ -124,7 +124,7 @@ local function showLoadingScreen()
     for i = 1, PARTICLE_COUNT do spawnParticle() end
 
     local centerContainer = Instance.new("Frame")
-    centerContainer.Size = UDim2.new(0, 500, 0, 400)
+    centerContainer.Size = UDim2.new(0, 500, 0, 700)
     centerContainer.Position = UDim2.new(0.5, 0, 0.5, 0)
     centerContainer.AnchorPoint = Vector2.new(0.5, 0.5)
     centerContainer.BackgroundTransparency = 1
@@ -132,8 +132,8 @@ local function showLoadingScreen()
     centerContainer.Parent = loadGui
 
     local logoImage = Instance.new("ImageLabel")
-    logoImage.Size = UDim2.new(0, 260, 0, 260)
-    logoImage.Position = UDim2.new(0.5, 0, 0, 15)
+    logoImage.Size = UDim2.new(0, 480, 0, 480)
+    logoImage.Position = UDim2.new(0.5, 0, 0, 80)
     logoImage.AnchorPoint = Vector2.new(0.5, 0)
     logoImage.BackgroundTransparency = 1
     logoImage.Image = "rbxassetid://124114118664372"
@@ -142,13 +142,12 @@ local function showLoadingScreen()
 
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 40)
-    title.Position = UDim2.new(0, 0, 0, 285)
+    title.Position = UDim2.new(0, 0, 0, 600)
     title.BackgroundTransparency = 1
     title.Text = "SILENT SKY SCRIPTS"
     title.TextColor3 = Color3.fromRGB(0, 0, 0)
     title.TextSize = 30
     title.Font = Enum.Font.GothamBlack
-    title.TextTransparency = 1
     title.ZIndex = 8
     title.Parent = centerContainer
 
@@ -161,22 +160,21 @@ local function showLoadingScreen()
 
     local statusLabel = Instance.new("TextLabel")
     statusLabel.Size = UDim2.new(1, 0, 0, 18)
-    statusLabel.Position = UDim2.new(0, 0, 0, 335)
+    statusLabel.Position = UDim2.new(0, 0, 0, 640)
     statusLabel.BackgroundTransparency = 1
     statusLabel.Text = "Initialising..."
     statusLabel.TextColor3 = Color3.fromRGB(40, 40, 40)
     statusLabel.TextSize = 14
     statusLabel.Font = Enum.Font.GothamBold
-    statusLabel.TextTransparency = 1
     statusLabel.ZIndex = 8
     statusLabel.Parent = centerContainer
 
     local barHolder = Instance.new("Frame")
     barHolder.Size = UDim2.new(0, 340, 0, 6)
-    barHolder.Position = UDim2.new(0.5, 0, 0, 370)
+    barHolder.Position = UDim2.new(0.5, 0, 0, 670)
     barHolder.AnchorPoint = Vector2.new(0.5, 0)
     barHolder.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    barHolder.BackgroundTransparency = 1
+    barHolder.BackgroundTransparency = 0.2
     barHolder.BorderSizePixel = 0
     barHolder.ZIndex = 8
     barHolder.Parent = centerContainer
@@ -206,17 +204,8 @@ local function showLoadingScreen()
     percentLabel.TextSize = 14
     percentLabel.Font = Enum.Font.GothamBold
     percentLabel.TextXAlignment = Enum.TextXAlignment.Left
-    percentLabel.TextTransparency = 1
     percentLabel.ZIndex = 8
     percentLabel.Parent = barHolder
-
-    local fadeInInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    TweenService:Create(backdrop, fadeInInfo, {BackgroundTransparency = 0}):Play()
-    TweenService:Create(title, fadeInInfo, {TextTransparency = 0}):Play()
-    TweenService:Create(statusLabel, fadeInInfo, {TextTransparency = 0}):Play()
-    TweenService:Create(barHolder, fadeInInfo, {BackgroundTransparency = 0.2}):Play()
-    TweenService:Create(percentLabel, fadeInInfo, {TextTransparency = 0}):Play()
-    TweenService:Create(logoImage, fadeInInfo, {ImageTransparency = 0}):Play()
 
     local particleConnection
     particleConnection = RunService.RenderStepped:Connect(function(dt)
@@ -277,19 +266,6 @@ local function showLoadingScreen()
         particleConnection = nil
     end
 
-    local FADE_OUT_TIME = 1.2
-    local fadeOutInfo = TweenInfo.new(FADE_OUT_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-    TweenService:Create(backdrop,     fadeOutInfo, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(title,        fadeOutInfo, {TextTransparency       = 1}):Play()
-    TweenService:Create(statusLabel,  fadeOutInfo, {TextTransparency       = 1}):Play()
-    TweenService:Create(barHolder,    fadeOutInfo, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(barFill,      fadeOutInfo, {BackgroundTransparency = 1}):Play()
-    TweenService:Create(percentLabel, fadeOutInfo, {TextTransparency       = 1}):Play()
-    TweenService:Create(logoImage,    fadeOutInfo, {ImageTransparency      = 1}):Play()
-    for _, p in ipairs(particles) do
-        TweenService:Create(p.frame, fadeOutInfo, {BackgroundTransparency = 1}):Play()
-    end
-    task.wait(FADE_OUT_TIME + 0.05)
     loadGui:Destroy()
 end
 
@@ -353,7 +329,8 @@ local Themes = {
         Min=Color3.fromRGB(40,40,40), MinHover=Color3.fromRGB(70,70,70),
     },
     NewOriginal = {
-        PanelTop=Color3.fromRGB(255, 255, 150), PanelBottom=Color3.fromRGB(255, 150, 200),
+        PanelTop=Color3.fromRGB(255, 255, 150), -- Yellow (Exact)
+        PanelBottom=Color3.fromRGB(255, 150, 200), -- Pink (Exact)
         Header=Color3.fromRGB(255, 240, 200), Content=Color3.fromRGB(255, 235, 245),
         Accent=Color3.fromRGB(0, 0, 0), AccentSoft=Color3.fromRGB(80, 80, 80),
         Close=Color3.fromRGB(220, 80, 100), CloseHover=Color3.fromRGB(240, 105, 125),
@@ -453,7 +430,7 @@ if type(gethui) == "function" then
     if ok and hui then parentGui = hui end
 end
 screenGui.Parent = parentGui
-screenGui.Enabled = false   -- start hidden; we fade it in later
+screenGui.Enabled = true
 
 local floatGui = Instance.new("ScreenGui")
 floatGui.Name = "SilentSkyFloatBar"
@@ -473,7 +450,7 @@ panel.Name = "Panel"
 panel.AnchorPoint = Vector2.new(0.5, 0.5)
 panel.Size = DEFAULT_EXPANDED_SIZE
 panel.Position = UDim2.new(0, INITIAL_CX, 0, INITIAL_CY)
-panel.BackgroundColor3 = Color3.fromRGB(10, 8, 18)
+panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- FIXED: White base so gradient is pure
 panel.BorderSizePixel = 0
 panel.ClipsDescendants = true
 panel.Parent = screenGui
@@ -484,8 +461,8 @@ panelCorner.Parent = panel
 
 local panelGradient = Instance.new("UIGradient")
 panelGradient.Color = ColorSequence.new({
-    ColorSequenceKeypoint.new(0, Theme.PanelTop),
-    ColorSequenceKeypoint.new(1, Theme.PanelBottom),
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 150)), -- Yellow
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 150, 200)), -- Pink
 })
 panelGradient.Rotation = 135
 panelGradient.Parent = panel
@@ -504,9 +481,9 @@ panelBorderCorner.CornerRadius = UDim.new(0, 10)
 panelBorderCorner.Parent = panelBorder
 
 local panelStroke = Instance.new("UIStroke")
-panelStroke.Color = Theme.AccentSoft
+panelStroke.Color = Color3.fromRGB(255, 255, 255) -- FIXED: White border instead of dark gray
 panelStroke.Thickness = 2
-panelStroke.Transparency = 0.55
+panelStroke.Transparency = 0.8 -- FIXED: Very light border
 panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 panelStroke.Parent = panelBorder
 
@@ -522,86 +499,6 @@ local resizeStart, startSize, resizeTopLeft
 
 local showCommandBar
 local hideCommandBar
-
--- ==== Fade system ====
-local fadeTargets = {}
-local windowVisible = true
-local bubbleAlpha = 1
-local bubbleAlphaTask = nil
-
-local function tweenBubbleAlpha(target, duration)
-    if bubbleAlphaTask then
-        task.cancel(bubbleAlphaTask)
-        bubbleAlphaTask = nil
-    end
-    if duration <= 0 then
-        bubbleAlpha = target
-        return
-    end
-    local startAlpha = bubbleAlpha
-    local startTime = os.clock()
-    bubbleAlphaTask = task.spawn(function()
-        while true do
-            local elapsed = os.clock() - startTime
-            local p = math.clamp(elapsed / duration, 0, 1)
-            local eased
-            if p < 0.5 then
-                eased = 2 * p * p
-            else
-                eased = 1 - ((-2 * p + 2) ^ 2) / 2
-            end
-            bubbleAlpha = startAlpha + (target - startAlpha) * eased
-            if p >= 1 then break end
-            RunService.Heartbeat:Wait()
-        end
-        bubbleAlpha = target
-        bubbleAlphaTask = nil
-    end)
-end
-
-local function applyWindowAlpha(alpha, duration, style)
-    style = style or Enum.EasingStyle.Quart
-    for _, t in ipairs(fadeTargets) do
-        local targetValue = 1 - (1 - t.base) * alpha
-        if duration <= 0 then
-            t.obj[t.prop] = targetValue
-        else
-            TweenService:Create(t.obj, TweenInfo.new(duration, style), {
-                [t.prop] = targetValue
-            }):Play()
-        end
-    end
-    tweenBubbleAlpha(alpha, duration)
-end
-
-local function collectFadeables(obj)
-    for _, child in ipairs(obj:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("ScrollingFrame") then
-            if child.BackgroundTransparency < 1 then
-                fadeTargets[#fadeTargets+1] = {obj=child, prop="BackgroundTransparency", base=child.BackgroundTransparency}
-            end
-        elseif child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
-            if child.BackgroundTransparency < 1 then
-                fadeTargets[#fadeTargets+1] = {obj=child, prop="BackgroundTransparency", base=child.BackgroundTransparency}
-            end
-            if child.TextTransparency < 1 then
-                fadeTargets[#fadeTargets+1] = {obj=child, prop="TextTransparency", base=child.TextTransparency}
-            end
-        elseif child:IsA("ImageLabel") or child:IsA("ImageButton") then
-            if child.BackgroundTransparency < 1 then
-                fadeTargets[#fadeTargets+1] = {obj=child, prop="BackgroundTransparency", base=child.BackgroundTransparency}
-            end
-            if child.ImageTransparency < 1 then
-                fadeTargets[#fadeTargets+1] = {obj=child, prop="ImageTransparency", base=child.ImageTransparency}
-            end
-        elseif child:IsA("UIStroke") then
-            if child.Transparency < 1 then
-                fadeTargets[#fadeTargets+1] = {obj=child, prop="Transparency", base=child.Transparency}
-            end
-        end
-        collectFadeables(child)
-    end
-end
 
 -- ==== Expanded view ====
 local expandedView = Instance.new("Frame")
@@ -628,9 +525,8 @@ local function spawnBubble()
     frame.Size = UDim2.new(0, size, 0, size)
     frame.Position = UDim2.new(0, 0, 0, 0)
 
-    local greyValue = ({10, 20, 30})[math.random(1, 3)]
-    frame.BackgroundColor3 = Color3.fromRGB(greyValue, greyValue, greyValue)
-    frame.BackgroundTransparency = math.random(70, 88) / 100
+    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- Pure white
+    frame.BackgroundTransparency = math.random(90, 98) / 100 -- Very transparent
     frame.BorderSizePixel = 0
     frame.ZIndex = 1
     frame.Parent = expandedView
@@ -647,7 +543,6 @@ local function spawnBubble()
         screenPos = Vector2.new(screenX, screenY),
         vel = Vector2.new(math.cos(angle) * speed, math.sin(angle) * speed),
         size = size,
-        greyValue = greyValue,
         tint = 0.25 + math.random() * 0.5,
     }
 end
@@ -655,18 +550,9 @@ end
 for i = 1, BUBBLE_COUNT do spawnBubble() end
 
 local function recolorBubbles()
-    local isOriginal = (currentThemeName == "Original")
+    -- Bubbles stay pure white, no tinting, so they don't muddy the background
     for _, b in ipairs(bubbles) do
-        if isOriginal then
-            local g = b.greyValue
-            b.frame.BackgroundColor3 = Color3.fromRGB(g, g, g)
-        else
-            local base, accent, t = Theme.PanelBottom, Theme.Accent, b.tint
-            b.frame.BackgroundColor3 = Color3.new(
-                base.R + (accent.R - base.R) * t,
-                base.G + (accent.G - base.G) * t,
-                base.B + (accent.B - base.B) * t)
-        end
+        b.frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     end
 end
 
@@ -674,24 +560,10 @@ end
 local header = Instance.new("Frame")
 header.Name = "Header"
 header.Size = UDim2.new(1, 0, 0, 36)
-header.BackgroundColor3 = Theme.Header
-header.BackgroundTransparency = 0.15
+header.BackgroundTransparency = 1 -- Fully transparent
 header.BorderSizePixel = 0
 header.ZIndex = 2
 header.Parent = expandedView
-
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 12)
-headerCorner.Parent = header
-
-local headerCover = Instance.new("Frame")
-headerCover.Size = UDim2.new(1, 0, 0, 12)
-headerCover.Position = UDim2.new(0, 0, 1, -12)
-headerCover.BackgroundColor3 = Theme.Header
-headerCover.BackgroundTransparency = 0.15
-headerCover.BorderSizePixel = 0
-headerCover.ZIndex = 2
-headerCover.Parent = header
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -100, 1, 0)
@@ -742,8 +614,8 @@ contentCorner.Parent = content
 local sidebar = Instance.new("Frame")
 sidebar.Name = "Sidebar"
 sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
-sidebar.BackgroundColor3 = Theme.Content
-sidebar.BackgroundTransparency = 0.6
+sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+sidebar.BackgroundTransparency = 1 -- FIXED: Fully transparent to show gradient
 sidebar.BorderSizePixel = 0
 sidebar.ZIndex = 2
 sidebar.Parent = content
@@ -841,8 +713,8 @@ local function createTab(name, opts)
     btn.Name = name .. "Tab"
     btn.Size = UDim2.new(1, -8, 0, TAB_H)
     btn.Position = UDim2.new(0, 4, 0, topY)
-    btn.BackgroundColor3 = Theme.Content
-    btn.BackgroundTransparency = 0.75
+    btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BackgroundTransparency = 1 -- FIXED: Fully transparent
     btn.Text = ""
     btn.AutoButtonColor = false
     btn.BorderSizePixel = 0
@@ -867,7 +739,7 @@ local function createTab(name, opts)
 
     local function setActive(isActive)
         page.Visible = isActive
-        TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundTransparency = isActive and 0.2 or 0.75 }):Play()
+        TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundTransparency = isActive and 0.2 or 1 }):Play()
         TweenService:Create(label, TweenInfo.new(0.15), { TextColor3 = isActive and Theme.Text or Theme.TextDim }):Play()
     end
 
@@ -883,13 +755,18 @@ local function createTab(name, opts)
     end)
     btn.MouseLeave:Connect(function()
         if activeTab == name then return end
-        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundTransparency = 0.75}):Play()
+        TweenService:Create(btn, TweenInfo.new(0.15), {BackgroundTransparency = 1}):Play()
     end)
 
     return page
 end
 
-local mainPage     = createTab("Main", { hint = false })
+local mainPage     = createTab("Main",     { hint = false })
+local commandsPage = createTab("Commands", { hint = false })
+local worldPage    = createTab("World",    { hint = true })
+local visualsPage  = createTab("Visuals",  { hint = true })
+local utilityPage  = createTab("Utility",  { hint = true })
+local extrasPage   = createTab("Extras",   { hint = true })
 local settingsPage = createTab("Settings", { hint = false })
 
 -- ============================================================
@@ -1525,50 +1402,32 @@ mainPadding.PaddingLeft = UDim.new(0, 2)
 mainPadding.PaddingRight = UDim.new(0, 2)
 mainPadding.Parent = mainContent
 
-createToggle(mainContent, {
-    label = "Enable Commands",
-    default = true,
-    layoutOrder = 1,
-    callback = function(on)
-        commandsEnabled = on
-        if not on and hideCommandBar then hideCommandBar() end
-    end,
-})
+-- ============================================================
+--  COMMANDS PAGE
+-- ============================================================
+local commandsContent = Instance.new("Frame")
+commandsContent.Size = UDim2.new(1, 0, 0, 0)
+commandsContent.Position = UDim2.new(0, 0, 0, 30)
+commandsContent.BackgroundTransparency = 1
+commandsContent.AutomaticSize = Enum.AutomaticSize.Y
+commandsContent.Parent = commandsPage
 
-local commandsSubtitle = Instance.new("TextLabel")
-commandsSubtitle.Size = UDim2.new(1, 0, 0, 16)
-commandsSubtitle.BackgroundTransparency = 1
-commandsSubtitle.Text = "Type ; to start a command"
-commandsSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
-commandsSubtitle.TextSize = 11
-commandsSubtitle.Font = Enum.Font.Gotham
-commandsSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-commandsSubtitle.LayoutOrder = 2
-commandsSubtitle.Parent = mainContent
+local commandsLayout = Instance.new("UIListLayout")
+commandsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+commandsLayout.Padding = UDim.new(0, 8)
+commandsLayout.Parent = commandsContent
 
-local gap = Instance.new("Frame")
-gap.Size = UDim2.new(1, 0, 0, 12)
-gap.BackgroundTransparency = 1
-gap.LayoutOrder = 3
-gap.Parent = mainContent
-
-local listHeading = Instance.new("TextLabel")
-listHeading.Size = UDim2.new(1, 0, 0, 18)
-listHeading.BackgroundTransparency = 1
-listHeading.Text = "List of commands"
-listHeading.TextColor3 = Color3.fromRGB(235, 235, 245)
-listHeading.TextSize = 12
-listHeading.Font = Enum.Font.GothamBold
-listHeading.TextXAlignment = Enum.TextXAlignment.Left
-listHeading.LayoutOrder = 4
-listHeading.Parent = mainContent
+local commandsPadding = Instance.new("UIPadding")
+commandsPadding.PaddingLeft = UDim.new(0, 2)
+commandsPadding.PaddingRight = UDim.new(0, 2)
+commandsPadding.Parent = commandsContent
 
 local commandListFrame = Instance.new("Frame")
 commandListFrame.Size = UDim2.new(1, 0, 0, 0)
 commandListFrame.BackgroundTransparency = 1
 commandListFrame.AutomaticSize = Enum.AutomaticSize.Y
-commandListFrame.LayoutOrder = 5
-commandListFrame.Parent = mainContent
+commandListFrame.LayoutOrder = 1
+commandListFrame.Parent = commandsContent
 
 local commandListLayout = Instance.new("UIListLayout")
 commandListLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -1735,19 +1594,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if UserInputService:GetFocusedTextBox() then return end
     if input.KeyCode ~= hubKeyCode then return end
 
-    local newVisible = not windowVisible
-    windowVisible = newVisible
-
-    if newVisible then
-        screenGui.Enabled = true
-        applyWindowAlpha(1, 0.35, Enum.EasingStyle.Quart)
-    else
-        applyWindowAlpha(0, 0.30, Enum.EasingStyle.Quart)
-        task.delay(0.32, function()
-            if not windowVisible then
-                screenGui.Enabled = false
-            end
-        end)
+    screenGui.Enabled = not screenGui.Enabled
+    if not screenGui.Enabled then
         if cmdBar.Visible then
             cmdBar.Visible = false
             cmdBar.Text = ""
@@ -1793,7 +1641,7 @@ createToggle(inspectToggleWrap, {
 })
 
 local playerInfoPanel = Instance.new("Frame")
-playerInfoPanel.Size = UDim2.new(1, 0, 0, 180)
+playerInfoPanel.Size = UDim2.new(0, 300, 0, 180)
 playerInfoPanel.Position = UDim2.new(0, 0, 0, 180)
 playerInfoPanel.BackgroundColor3 = Theme.Content
 playerInfoPanel.BackgroundTransparency = 0.4
@@ -2592,7 +2440,8 @@ applyBtn.MouseLeave:Connect(function()
     TweenService:Create(applyBtnStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
 end)
 
-mainPage.CanvasSize = UDim2.new(0, 0, 0, 800)
+mainPage.CanvasSize     = UDim2.new(0, 0, 0, 800)
+commandsPage.CanvasSize = UDim2.new(0, 0, 0, 800)
 settingsPage.CanvasSize = UDim2.new(0, 0, 0, 1800)
 
 -- ============================================================
@@ -2649,20 +2498,21 @@ applyTheme = function(name)
         Min = base.Min, MinHover = base.MinHover,
     }
 
-    panel.BackgroundColor3 = Theme.PanelBottom
+    panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255) -- FIXED: White base
     panelGradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Theme.PanelTop),
         ColorSequenceKeypoint.new(1, Theme.PanelBottom),
     })
-    panelStroke.Color = Theme.AccentSoft
+    panelGradient.Rotation = 135
+    panelStroke.Color = Color3.fromRGB(255, 255, 255) -- FIXED: White stroke
+    panelStroke.Transparency = 0.8
 
-    header.BackgroundColor3 = Theme.Header
-    headerCover.BackgroundColor3 = Theme.Header
     title.TextColor3 = Theme.Text
     closeBtn.BackgroundColor3 = Theme.Close
     closeBtn.TextColor3 = deriveTextColors(Theme.Close)
 
-    sidebar.BackgroundColor3 = Theme.Content
+    sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    sidebar.BackgroundTransparency = 1 -- FIXED: Fully transparent
     accentBar.BackgroundColor3 = Theme.Accent
 
     for _, dot in ipairs(resizeHandle:GetChildren()) do
@@ -2674,7 +2524,8 @@ applyTheme = function(name)
     for _, tabName in ipairs(tabOrder) do
         local tab = tabs[tabName]
         if tab then
-            tab.button.BackgroundColor3 = Theme.Content
+            tab.button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            tab.button.BackgroundTransparency = 1 -- FIXED: Fully transparent
             tab.label.TextColor3 = (tabName == activeTab) and Theme.Text or Theme.TextDim
             tab.pageTitle.TextColor3 = Theme.Text
             if tab.page:IsA("ScrollingFrame") then
@@ -2733,8 +2584,6 @@ applyTheme = function(name)
 
     for _, entry in ipairs(toggleRegistry) do entry.applyTheme() end
 
-    commandsSubtitle.TextColor3 = Theme.TextDim
-    listHeading.TextColor3 = Theme.Text
     for _, entry in ipairs(commandListTexts) do
         entry.name.TextColor3 = Theme.Text
         entry.alias.TextColor3 = Theme.TextDim
@@ -2748,6 +2597,7 @@ applyTheme = function(name)
         ColorSequenceKeypoint.new(0, Theme.PanelTop),
         ColorSequenceKeypoint.new(1, Theme.PanelBottom),
     })
+    floatBarGradient.Rotation = 135
     floatBarStroke.Color = Theme.Accent
     floatPrompt.TextColor3 = Theme.Accent
     floatBox.TextColor3 = Theme.Text
@@ -2897,30 +2747,6 @@ pcall(function() selectTab("Main") end)
 
 task.spawn(function()
     pcall(fetchGameInfo)
-end)
-
--- Let initial UI tweens (accent bar, etc.) finish while the GUI is still
--- hidden, then collect targets and fade in smoothly.
-task.spawn(function()
-    task.wait(0.4)   -- invisible, so this delay costs nothing visually
-
-    collectFadeables(panel)
-    if panel.BackgroundTransparency < 1 then
-        fadeTargets[#fadeTargets+1] = {
-            obj = panel, prop = "BackgroundTransparency",
-            base = panel.BackgroundTransparency
-        }
-    end
-
-    -- Snap everything to fully transparent while still hidden
-    applyWindowAlpha(0, 0)
-
-    -- Reveal the GUI, wait one render frame so the first drawn frame is
-    -- guaranteed to be the transparent state, THEN fade in.
-    screenGui.Enabled = true
-    RunService.Heartbeat:Wait()
-
-    applyWindowAlpha(1, 0.55, Enum.EasingStyle.Quart)
 end)
 
 print("[Silent Sky Scripts] loaded")
