@@ -453,7 +453,7 @@ if type(gethui) == "function" then
     if ok and hui then parentGui = hui end
 end
 screenGui.Parent = parentGui
-screenGui.Enabled = false
+screenGui.Enabled = false   -- start hidden; we fade it in later
 
 local floatGui = Instance.new("ScreenGui")
 floatGui.Name = "SilentSkyFloatBar"
@@ -889,8 +889,7 @@ local function createTab(name, opts)
     return page
 end
 
-local mainPage     = createTab("Main",     { hint = false })
-local commandsPage = createTab("Commands", { hint = false })
+local mainPage     = createTab("Main", { hint = false })
 local settingsPage = createTab("Settings", { hint = false })
 
 -- ============================================================
@@ -1547,25 +1546,11 @@ commandsSubtitle.TextXAlignment = Enum.TextXAlignment.Left
 commandsSubtitle.LayoutOrder = 2
 commandsSubtitle.Parent = mainContent
 
--- ============================================================
---  COMMANDS PAGE
--- ============================================================
-local commandsContent = Instance.new("Frame")
-commandsContent.Size = UDim2.new(1, 0, 0, 0)
-commandsContent.Position = UDim2.new(0, 0, 0, 30)
-commandsContent.BackgroundTransparency = 1
-commandsContent.AutomaticSize = Enum.AutomaticSize.Y
-commandsContent.Parent = commandsPage
-
-local commandsLayout = Instance.new("UIListLayout")
-commandsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-commandsLayout.Padding = UDim.new(0, 8)
-commandsLayout.Parent = commandsContent
-
-local commandsPadding = Instance.new("UIPadding")
-commandsPadding.PaddingLeft = UDim.new(0, 2)
-commandsPadding.PaddingRight = UDim.new(0, 2)
-commandsPadding.Parent = commandsContent
+local gap = Instance.new("Frame")
+gap.Size = UDim2.new(1, 0, 0, 12)
+gap.BackgroundTransparency = 1
+gap.LayoutOrder = 3
+gap.Parent = mainContent
 
 local listHeading = Instance.new("TextLabel")
 listHeading.Size = UDim2.new(1, 0, 0, 18)
@@ -1575,15 +1560,15 @@ listHeading.TextColor3 = Color3.fromRGB(235, 235, 245)
 listHeading.TextSize = 12
 listHeading.Font = Enum.Font.GothamBold
 listHeading.TextXAlignment = Enum.TextXAlignment.Left
-listHeading.LayoutOrder = 1
-listHeading.Parent = commandsContent
+listHeading.LayoutOrder = 4
+listHeading.Parent = mainContent
 
 local commandListFrame = Instance.new("Frame")
 commandListFrame.Size = UDim2.new(1, 0, 0, 0)
 commandListFrame.BackgroundTransparency = 1
 commandListFrame.AutomaticSize = Enum.AutomaticSize.Y
-commandListFrame.LayoutOrder = 2
-commandListFrame.Parent = commandsContent
+commandListFrame.LayoutOrder = 5
+commandListFrame.Parent = mainContent
 
 local commandListLayout = Instance.new("UIListLayout")
 commandListLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -1807,9 +1792,8 @@ createToggle(inspectToggleWrap, {
     callback = function(on) inspectEnabled = on end,
 })
 
--- Narrowed player info panel (was UDim2.new(1, 0, 0, 180))
 local playerInfoPanel = Instance.new("Frame")
-playerInfoPanel.Size = UDim2.new(0, 300, 0, 180)
+playerInfoPanel.Size = UDim2.new(1, 0, 0, 180)
 playerInfoPanel.Position = UDim2.new(0, 0, 0, 180)
 playerInfoPanel.BackgroundColor3 = Theme.Content
 playerInfoPanel.BackgroundTransparency = 0.4
@@ -2608,8 +2592,7 @@ applyBtn.MouseLeave:Connect(function()
     TweenService:Create(applyBtnStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
 end)
 
-mainPage.CanvasSize     = UDim2.new(0, 0, 0, 800)
-commandsPage.CanvasSize = UDim2.new(0, 0, 0, 800)
+mainPage.CanvasSize = UDim2.new(0, 0, 0, 800)
 settingsPage.CanvasSize = UDim2.new(0, 0, 0, 1800)
 
 -- ============================================================
@@ -2916,10 +2899,10 @@ task.spawn(function()
     pcall(fetchGameInfo)
 end)
 
--- Let initial UI tweens finish while the GUI is still hidden, then collect
--- fade targets and fade in smoothly.
+-- Let initial UI tweens (accent bar, etc.) finish while the GUI is still
+-- hidden, then collect targets and fade in smoothly.
 task.spawn(function()
-    task.wait(0.4)
+    task.wait(0.4)   -- invisible, so this delay costs nothing visually
 
     collectFadeables(panel)
     if panel.BackgroundTransparency < 1 then
@@ -2929,8 +2912,11 @@ task.spawn(function()
         }
     end
 
+    -- Snap everything to fully transparent while still hidden
     applyWindowAlpha(0, 0)
 
+    -- Reveal the GUI, wait one render frame so the first drawn frame is
+    -- guaranteed to be the transparent state, THEN fade in.
     screenGui.Enabled = true
     RunService.Heartbeat:Wait()
 
