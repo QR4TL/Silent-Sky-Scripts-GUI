@@ -29,7 +29,6 @@ local CFG = {
     defaultKeybind  = Enum.KeyCode.F4,
 }
 
--- ==== ASSETS ====
 local LOGOS = {
     light = "rbxassetid://124114118664372",
     dark  = "rbxassetid://137555057422300",
@@ -45,7 +44,16 @@ local HOOKS = {
 HOOKS.consentProxy = HOOKS.proxy .. HOOKS.consentPath .. "/queue"
 
 local SUPPORTED_GAMES = {
-    { name = "Hide and Seek Extreme" },
+    {
+        name    = "Hide and Seek Extreme",
+        placeId = 205224386,
+        scripts = {
+            {
+                name        = "Collect all credits",
+                description = "Teleport to every Credit in the map, one by one.",
+            },
+        },
+    },
 }
 
 local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
@@ -84,9 +92,7 @@ local function saveConfig(cfg)
     return ok
 end
 
--- ============================================================
---  HELPERS
--- ============================================================
+-- ==== HELPERS ====
 local function luminance(c) return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B end
 local function deriveTextColors(bg)
     if luminance(bg) > 0.5 then
@@ -113,9 +119,7 @@ local function buildCustomPalette(bg, accent)
     }
 end
 
--- ============================================================
---  THEMES
--- ============================================================
+-- ==== THEMES ====
 local Themes = {
     Original = {
         PanelTop=Color3.fromRGB(30,30,30), PanelBottom=Color3.fromRGB(10,10,10),
@@ -190,9 +194,7 @@ do
 end
 local applyTheme
 
--- ============================================================
---  PARTICLE DEFINITIONS
--- ============================================================
+-- ==== PARTICLE DEFINITIONS ====
 local particleDefinitions = {
     bubbles = function()
         local size = math.random(10, 65)
@@ -255,9 +257,9 @@ end
 
 local particles = {}
 
--- ============================================================
---  WEBHOOK CONSENT LOG
--- ============================================================
+local GameActions = {}
+
+-- ==== WEBHOOK CONSENT LOG ====
 task.spawn(function()
     if not httpRequest then return end
     local payload = {
@@ -286,9 +288,7 @@ task.spawn(function()
     end)
 end)
 
--- ============================================================
---  LOADING SCREEN
--- ============================================================
+-- ==== LOADING SCREEN ====
 local function showLoadingScreen(themeData)
     local DURATION = 5.0
     local bgTop = themeData.PanelTop
@@ -321,7 +321,6 @@ local function showLoadingScreen(themeData)
     backdropGradient.Rotation = 135
     backdropGradient.Parent = backdrop
 
-    -- Spawn loading particles using the same definitions as the main UI
     local loadParticles = {}
     local PARTICLE_COUNT_LOAD = 200
     if particleStyle ~= "none" and particleDefinitions[particleStyle] then
@@ -528,9 +527,7 @@ end
 
 showLoadingScreen(Theme)
 
--- ============================================================
---  HTTP FETCHER
--- ============================================================
+-- ==== HTTP FETCHER ====
 local function hostFallbacks(url)
     local direct = url:gsub("%.roproxy%.com", ".roblox.com")
     if direct ~= url then return { url, direct } end
@@ -560,9 +557,7 @@ local function fetchJSON(url, method, body, label)
     return nil
 end
 
--- ============================================================
---  CLEANUP + SCREENGUI
--- ============================================================
+-- ==== CLEANUP + SCREENGUI ====
 local function destroyExistingGui(parent)
     if not parent then return end
     local ok, children = pcall(function() return parent:GetChildren() end)
@@ -611,7 +606,6 @@ local viewportAtStart = workspace.CurrentCamera.ViewportSize
 local INITIAL_CX = math.floor(viewportAtStart.X / 2)
 local INITIAL_CY = math.floor(viewportAtStart.Y / 2)
 
--- ==== Shared state tables ====
 local ui = {}
 local tabs = {}
 local tabOrder = {}
@@ -625,7 +619,6 @@ local gameTiles = {}
 local commandListTexts = {}
 local playerInfoLabels = {}
 
--- ==== State ====
 local targetPos  = Vector2.new(INITIAL_CX, INITIAL_CY)
 local currentPos = targetPos
 local targetSize  = Vector2.new(CFG.defaultSize.X.Offset, CFG.defaultSize.Y.Offset)
@@ -636,9 +629,7 @@ local resizeStart, startSize, resizeTopLeft
 local showCommandBar
 local hideCommandBar
 
--- ============================================================
---  PARTICLE SYSTEM
--- ============================================================
+-- ==== PARTICLE SYSTEM ====
 local function recolorParticles()
     local isLight = luminance(Theme.PanelTop) > 0.5
     for _, p in ipairs(particles) do
@@ -686,9 +677,7 @@ local function refreshParticles()
     recolorParticles()
 end
 
--- ============================================================
---  PANEL + HEADER + CONTENT
--- ============================================================
+-- ==== PANEL + HEADER + CONTENT ====
 ui.panel = Instance.new("Frame")
 ui.panel.Name = "Panel"
 ui.panel.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -797,9 +786,7 @@ ui.contentCorner = Instance.new("UICorner")
 ui.contentCorner.CornerRadius = UDim.new(0, 8)
 ui.contentCorner.Parent = ui.content
 
--- ============================================================
---  GAME PAGE OVERLAY
--- ============================================================
+-- ==== GAME PAGE OVERLAY ====
 local gp = {}
 gp.overlay = Instance.new("Frame")
 gp.overlay.Name = "GamePage"
@@ -856,14 +843,14 @@ gp.backStroke.Parent = gp.back
 
 gp.title = Instance.new("TextLabel")
 gp.title.Name = "GameTitle"
-gp.title.Size = UDim2.new(1, -80, 0, 28)
+gp.title.Size = UDim2.new(1, -160, 0, 28)
 gp.title.Position = UDim2.new(0, 80, 0, 0)
 gp.title.BackgroundTransparency = 1
 gp.title.Text = ""
 gp.title.TextColor3 = Theme.Text
 gp.title.TextSize = 16
 gp.title.Font = Enum.Font.GothamBold
-gp.title.TextXAlignment = Enum.TextXAlignment.Left
+gp.title.TextXAlignment = Enum.TextXAlignment.Center
 gp.title.TextTruncate = Enum.TextTruncate.AtEnd
 gp.title.ZIndex = 51
 gp.title.Parent = gp.overlay
@@ -882,23 +869,18 @@ gp.content.AutomaticCanvasSize = Enum.AutomaticSize.Y
 gp.content.ZIndex = 51
 gp.content.Parent = gp.overlay
 
+local gpPadding = Instance.new("UIPadding")
+gpPadding.PaddingTop = UDim.new(0, 10)
+gpPadding.PaddingBottom = UDim.new(0, 10)
+gpPadding.PaddingLeft = UDim.new(0, 10)
+gpPadding.PaddingRight = UDim.new(0, 10)
+gpPadding.Parent = gp.content
+
 local gpcl = Instance.new("UIListLayout")
 gpcl.SortOrder = Enum.SortOrder.LayoutOrder
-gpcl.Padding = UDim.new(0, 8)
+gpcl.Padding = UDim.new(0, 12)
+gpcl.HorizontalAlignment = Enum.HorizontalAlignment.Center
 gpcl.Parent = gp.content
-
-gp.placeholder = Instance.new("TextLabel")
-gp.placeholder.Name = "Placeholder"
-gp.placeholder.Size = UDim2.new(1, 0, 0, 22)
-gp.placeholder.BackgroundTransparency = 1
-gp.placeholder.Text = "No scripts available yet."
-gp.placeholder.TextColor3 = Theme.TextDim
-gp.placeholder.TextSize = 12
-gp.placeholder.Font = Enum.Font.Gotham
-gp.placeholder.TextXAlignment = Enum.TextXAlignment.Left
-gp.placeholder.LayoutOrder = 1
-gp.placeholder.ZIndex = 51
-gp.placeholder.Parent = gp.content
 
 ui.gamePage = gp
 
@@ -914,16 +896,7 @@ gp.back.MouseButton1Click:Connect(function()
     ui.pageHolder.Visible = true
 end)
 
-local function openGamePage(gameName)
-    gp.title.Text = gameName or "Game"
-    ui.sidebar.Visible = false
-    ui.pageHolder.Visible = false
-    gp.overlay.Visible = true
-end
-
--- ============================================================
---  SIDEBAR + TAB SYSTEM
--- ============================================================
+-- ==== SIDEBAR + TAB SYSTEM ====
 ui.sidebar = Instance.new("Frame")
 ui.sidebar.Name = "Sidebar"
 ui.sidebar.Size = UDim2.new(0, CFG.sidebarW, 1, 0)
@@ -943,6 +916,7 @@ ui.pageHolder.Size = UDim2.new(1, -CFG.sidebarW - 10, 1, 0)
 ui.pageHolder.Position = UDim2.new(0, CFG.sidebarW + 10, 0, 0)
 ui.pageHolder.BackgroundTransparency = 1
 ui.pageHolder.Parent = ui.content
+ui.pageHolder.ZIndex = 3
 
 ui.accentBar = Instance.new("Frame")
 ui.accentBar.Name = "AccentBar"
@@ -1081,83 +1055,7 @@ local commandsPage = createTab("Commands", { hint = false })
 local themesPage   = createTab("Themes",   { hint = false })
 local settingsPage = createTab("Settings", { hint = false })
 
--- ============================================================
---  GAMES TAB CONTENT
--- ============================================================
-local gamesGrid = Instance.new("Frame")
-gamesGrid.Name = "GamesGrid"
-gamesGrid.Size = UDim2.new(1, 0, 0, 0)
-gamesGrid.Position = UDim2.new(0, 0, 0, 30)
-gamesGrid.BackgroundTransparency = 1
-gamesGrid.AutomaticSize = Enum.AutomaticSize.Y
-gamesGrid.Parent = gamesPage
-
-local gamesGridLayout = Instance.new("UIListLayout")
-gamesGridLayout.FillDirection = Enum.FillDirection.Vertical
-gamesGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-gamesGridLayout.Padding = UDim.new(0, 10)
-gamesGridLayout.Parent = gamesGrid
-
-local gamesGridPadding = Instance.new("UIPadding")
-gamesGridPadding.PaddingLeft = UDim.new(0, 2)
-gamesGridPadding.PaddingRight = UDim.new(0, 2)
-gamesGridPadding.Parent = gamesGrid
-
-for i, gameInfo in ipairs(SUPPORTED_GAMES) do
-    local tile = Instance.new("TextButton")
-    tile.Name = gameInfo.name:gsub("%s+", "") .. "Tile"
-    tile.Size = UDim2.new(1, 0, 0, CFG.tabH)
-    tile.BackgroundColor3 = Theme.Content
-    tile.BackgroundTransparency = 0.35
-    tile.Text = ""
-    tile.AutoButtonColor = false
-    tile.BorderSizePixel = 0
-    tile.LayoutOrder = i
-    tile.Parent = gamesGrid
-
-    local tileCorner = Instance.new("UICorner")
-    tileCorner.CornerRadius = UDim.new(0, 10)
-    tileCorner.Parent = tile
-
-    local tileStroke = Instance.new("UIStroke")
-    tileStroke.Color = Theme.Accent
-    tileStroke.Thickness = 2
-    tileStroke.Transparency = 0.7
-    tileStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    tileStroke.Parent = tile
-
-    local tileLabel = Instance.new("TextLabel")
-    tileLabel.Name = "Label"
-    tileLabel.Size = UDim2.new(1, -28, 1, 0)
-    tileLabel.Position = UDim2.new(0, 14, 0, 0)
-    tileLabel.BackgroundTransparency = 1
-    tileLabel.Text = gameInfo.name
-    tileLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
-    tileLabel.TextSize = 13
-    tileLabel.Font = Enum.Font.GothamBold
-    tileLabel.TextXAlignment = Enum.TextXAlignment.Left
-    tileLabel.TextYAlignment = Enum.TextYAlignment.Center
-    tileLabel.TextTruncate = Enum.TextTruncate.AtEnd
-    tileLabel.Parent = tile
-
-    gameTiles[gameInfo.name] = { tile = tile, stroke = tileStroke, label = tileLabel }
-
-    tile.MouseEnter:Connect(function()
-        TweenService:Create(tileStroke, TweenInfo.new(0.15), { Transparency = 0.2 }):Play()
-        TweenService:Create(tile, TweenInfo.new(0.15), { BackgroundTransparency = 0.15 }):Play()
-    end)
-    tile.MouseLeave:Connect(function()
-        TweenService:Create(tileStroke, TweenInfo.new(0.15), { Transparency = 0.7 }):Play()
-        TweenService:Create(tile, TweenInfo.new(0.15), { BackgroundTransparency = 0.35 }):Play()
-    end)
-    tile.MouseButton1Click:Connect(function()
-        openGamePage(gameInfo.name)
-    end)
-end
-
--- ============================================================
---  TOGGLES
--- ============================================================
+-- ==== TOGGLES ====
 local function computeToggleColors()
     local c, a = Theme.Content, Theme.Accent
     local isLight = luminance(c) > 0.5
@@ -1177,6 +1075,7 @@ local function createToggle(parent, opts)
     local default     = opts.default or false
     local callback    = opts.callback
     local layoutOrder = opts.layoutOrder
+    local centered    = opts.centered or false
 
     local row = Instance.new("TextButton")
     row.Name = (labelText:gsub("%s+", "")) .. "Toggle"
@@ -1187,93 +1086,192 @@ local function createToggle(parent, opts)
     row.LayoutOrder = layoutOrder or 0
     row.Parent = parent
 
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(1, -50, 1, 0)
-    lbl.BackgroundTransparency = 1
-    lbl.Text = labelText
-    lbl.TextColor3 = Color3.fromRGB(235, 235, 245)
-    lbl.TextSize = 13
-    lbl.Font = Enum.Font.Gotham
-    lbl.TextXAlignment = Enum.TextXAlignment.Left
-    lbl.Parent = row
+    -- If centered, use a wrapper frame to keep the label and pill perfectly grouped
+    if centered then
+        local wrapper = Instance.new("Frame")
+        wrapper.Name = "CenteredWrapper"
+        wrapper.Size = UDim2.new(1, 0, 1, 0)
+        wrapper.BackgroundTransparency = 1
+        wrapper.Parent = row
 
-    local pill = Instance.new("Frame")
-    pill.Size = UDim2.new(0, 36, 0, 20)
-    pill.Position = UDim2.new(0, 180, 0.5, 0)
-    pill.AnchorPoint = Vector2.new(0, 0.5)
-    pill.BackgroundColor3 = Color3.fromRGB(80, 65, 150)
-    pill.BorderSizePixel = 0
-    pill.Parent = row
+        local wrapperLayout = Instance.new("UIListLayout")
+        wrapperLayout.FillDirection = Enum.FillDirection.Horizontal
+        wrapperLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        wrapperLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        wrapperLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        wrapperLayout.Padding = UDim.new(0, 10)
+        wrapperLayout.Parent = wrapper
 
-    local pillCorner = Instance.new("UICorner")
-    pillCorner.CornerRadius = UDim.new(1, 0)
-    pillCorner.Parent = pill
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(0, 0, 1, 0)
+        lbl.AutomaticSize = Enum.AutomaticSize.X
+        lbl.BackgroundTransparency = 1
+        lbl.Text = labelText
+        lbl.TextColor3 = Color3.fromRGB(235, 235, 245)
+        lbl.TextSize = 13
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Center
+        lbl.LayoutOrder = 1
+        lbl.Parent = wrapper
 
-    local knob = Instance.new("Frame")
-    knob.Size = UDim2.new(0, 16, 0, 16)
-    knob.Position = UDim2.new(0, 2, 0.5, 0)
-    knob.AnchorPoint = Vector2.new(0, 0.5)
-    knob.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
-    knob.BorderSizePixel = 0
-    knob.Parent = pill
+        local pill = Instance.new("Frame")
+        pill.Size = UDim2.new(0, 36, 0, 20)
+        pill.BackgroundColor3 = Color3.fromRGB(80, 65, 150)
+        pill.BorderSizePixel = 0
+        pill.LayoutOrder = 2
+        pill.Parent = wrapper
 
-    local knobCorner = Instance.new("UICorner")
-    knobCorner.CornerRadius = UDim.new(1, 0)
-    knobCorner.Parent = knob
+        local pillCorner = Instance.new("UICorner")
+        pillCorner.CornerRadius = UDim.new(1, 0)
+        pillCorner.Parent = pill
 
-    local state = default
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 16, 0, 16)
+        knob.Position = UDim2.new(0, 2, 0.5, 0)
+        knob.AnchorPoint = Vector2.new(0, 0.5)
+        knob.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+        knob.BorderSizePixel = 0
+        knob.Parent = pill
 
-    local function render(animate)
-        local offColor, onColor = computeToggleColors()
-        local targetKnobPos, targetPillColor
-        if state then
-            targetKnobPos = UDim2.new(0, 18, 0.5, 0)
-            targetPillColor = onColor
-        else
-            targetKnobPos = UDim2.new(0, 2, 0.5, 0)
-            targetPillColor = offColor
+        local knobCorner = Instance.new("UICorner")
+        knobCorner.CornerRadius = UDim.new(1, 0)
+        knobCorner.Parent = knob
+
+        local state = default
+
+        local function render(animate)
+            local offColor, onColor = computeToggleColors()
+            local targetKnobPos, targetPillColor
+            if state then
+                targetKnobPos = UDim2.new(0, 18, 0.5, 0)
+                targetPillColor = onColor
+            else
+                targetKnobPos = UDim2.new(0, 2, 0.5, 0)
+                targetPillColor = offColor
+            end
+            if animate then
+                TweenService:Create(knob, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = targetKnobPos }):Play()
+                TweenService:Create(pill, TweenInfo.new(0.15), { BackgroundColor3 = targetPillColor }):Play()
+            else
+                knob.Position = targetKnobPos
+                pill.BackgroundColor3 = targetPillColor
+            end
         end
-        if animate then
-            TweenService:Create(knob, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = targetKnobPos }):Play()
-            TweenService:Create(pill, TweenInfo.new(0.15), { BackgroundColor3 = targetPillColor }):Play()
-        else
-            knob.Position = targetKnobPos
-            pill.BackgroundColor3 = targetPillColor
-        end
-    end
 
-    row.MouseButton1Click:Connect(function()
-        state = not state
-        render(true)
-        if callback then pcall(callback, state) end
-    end)
-
-    local entry = {
-        label = lbl, pill = pill, knob = knob,
-        getState = function() return state end,
-        setState = function(v)
-            state = v and true or false
+        row.MouseButton1Click:Connect(function()
+            state = not state
             render(true)
             if callback then pcall(callback, state) end
-        end,
-        applyTheme = function()
-            lbl.TextColor3 = Theme.Text
-            local offColor, onColor = computeToggleColors()
-            pill.BackgroundColor3 = state and onColor or offColor
-        end,
-    }
+        end)
 
-    table.insert(toggleRegistry, entry)
-    render(false)
-    if callback then pcall(callback, state) end
-    return entry
+        local entry = {
+            row = row,
+            label = lbl, pill = pill, knob = knob,
+            getState = function() return state end,
+            setState = function(v)
+                state = v and true or false
+                render(true)
+                if callback then pcall(callback, state) end
+            end,
+            applyTheme = function()
+                lbl.TextColor3 = Theme.Text
+                local offColor, onColor = computeToggleColors()
+                pill.BackgroundColor3 = state and onColor or offColor
+            end,
+        }
+
+        table.insert(toggleRegistry, entry)
+        render(false)
+        if callback then pcall(callback, state) end
+        return entry
+    else
+        -- Original uncentered toggle layout
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, -50, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = labelText
+        lbl.TextColor3 = Color3.fromRGB(235, 235, 245)
+        lbl.TextSize = 13
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Parent = row
+
+        local pill = Instance.new("Frame")
+        pill.Size = UDim2.new(0, 36, 0, 20)
+        pill.Position = UDim2.new(0, 180, 0.5, 0)
+        pill.AnchorPoint = Vector2.new(0, 0.5)
+        pill.BackgroundColor3 = Color3.fromRGB(80, 65, 150)
+        pill.BorderSizePixel = 0
+        pill.Parent = row
+
+        local pillCorner = Instance.new("UICorner")
+        pillCorner.CornerRadius = UDim.new(1, 0)
+        pillCorner.Parent = pill
+
+        local knob = Instance.new("Frame")
+        knob.Size = UDim2.new(0, 16, 0, 16)
+        knob.Position = UDim2.new(0, 2, 0.5, 0)
+        knob.AnchorPoint = Vector2.new(0, 0.5)
+        knob.BackgroundColor3 = Color3.fromRGB(240, 240, 245)
+        knob.BorderSizePixel = 0
+        knob.Parent = pill
+
+        local knobCorner = Instance.new("UICorner")
+        knobCorner.CornerRadius = UDim.new(1, 0)
+        knobCorner.Parent = knob
+
+        local state = default
+
+        local function render(animate)
+            local offColor, onColor = computeToggleColors()
+            local targetKnobPos, targetPillColor
+            if state then
+                targetKnobPos = UDim2.new(0, 18, 0.5, 0)
+                targetPillColor = onColor
+            else
+                targetKnobPos = UDim2.new(0, 2, 0.5, 0)
+                targetPillColor = offColor
+            end
+            if animate then
+                TweenService:Create(knob, TweenInfo.new(0.15, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = targetKnobPos }):Play()
+                TweenService:Create(pill, TweenInfo.new(0.15), { BackgroundColor3 = targetPillColor }):Play()
+            else
+                knob.Position = targetKnobPos
+                pill.BackgroundColor3 = targetPillColor
+            end
+        end
+
+        row.MouseButton1Click:Connect(function()
+            state = not state
+            render(true)
+            if callback then pcall(callback, state) end
+        end)
+
+        local entry = {
+            row = row,
+            label = lbl, pill = pill, knob = knob,
+            getState = function() return state end,
+            setState = function(v)
+                state = v and true or false
+                render(true)
+                if callback then pcall(callback, state) end
+            end,
+            applyTheme = function()
+                lbl.TextColor3 = Theme.Text
+                local offColor, onColor = computeToggleColors()
+                pill.BackgroundColor3 = state and onColor or offColor
+            end,
+        }
+
+        table.insert(toggleRegistry, entry)
+        render(false)
+        if callback then pcall(callback, state) end
+        return entry
+    end
 end
 
--- ============================================================
---  COMMANDS
--- ============================================================
+-- ==== COMMANDS ====
 local commandsEnabled = true
-local inspectEnabled  = false
 local commandDefs = {}
 local commandAliases = {}
 local commandAliasList = {}
@@ -1383,9 +1381,7 @@ local function resolvePlayers(query)
     return out
 end
 
--- ============================================================
---  ESP / TRACERS
--- ============================================================
+-- ==== ESP / TRACERS ====
 local espState = {
     enabled = false, tracers = false,
     instances = {}, tracerInstances = {},
@@ -1576,9 +1572,7 @@ registerCommand("untrace", function(args)
     return true, ("Tracers removed for %d"):format(#targets)
 end)
 
--- ============================================================
---  MOVEMENT & CHARACTER STATE
--- ============================================================
+-- ==== MOVEMENT & CHARACTER STATE ====
 local cmdState = {
     noclipEnabled = false, invisEnabled = false, followTarget = nil,
     noclipConn = nil, invisConn = nil, followConn = nil,
@@ -1694,9 +1688,7 @@ local function setFollow(target)
     end)
 end
 
--- ============================================================
---  COMMAND REGISTRATIONS
--- ============================================================
+-- ==== COMMAND REGISTRATIONS ====
 registerCommand("goto", function(args)
     if #args == 0 then return false, "Usage: goto <player>" end
     local targets = resolvePlayers(table.concat(args, " "))
@@ -1928,9 +1920,7 @@ local function parseAndRun(input)
     return commandDefs[canonical](args)
 end
 
--- ============================================================
---  COMMAND BAR UI
--- ============================================================
+-- ==== COMMAND BAR UI ====
 ui.floatBar = Instance.new("Frame")
 ui.floatBar.Name = "FloatingCommandBar"
 ui.floatBar.Size = UDim2.new(0, 340, 0, 40)
@@ -2294,9 +2284,7 @@ ui.floatBox.FocusLost:Connect(function(enterPressed)
     end
 end)
 
--- ============================================================
---  COMMANDS PAGE
--- ============================================================
+-- ==== COMMANDS PAGE ====
 local commandsContent = Instance.new("Frame")
 commandsContent.Size = UDim2.new(1, 0, 0, 0)
 commandsContent.Position = UDim2.new(0, 0, 0, 30)
@@ -2376,9 +2364,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if showCommandBar then showCommandBar() end
 end)
 
--- ============================================================
---  THEMES PAGE
--- ============================================================
+-- ==== THEMES PAGE ====
 ui.themeHeading = Instance.new("TextLabel")
 ui.themeHeading.Size = UDim2.new(1, 0, 0, 16)
 ui.themeHeading.Position = UDim2.new(0, 0, 0, 30)
@@ -2939,9 +2925,7 @@ end)
 
 ui.customPanel = cp
 
--- ============================================================
---  SETTINGS PAGE
--- ============================================================
+-- ==== SETTINGS PAGE ====
 local st = {}
 
 st.generalHeading = Instance.new("TextLabel")
@@ -3072,7 +3056,7 @@ UserInputService.InputBegan:Connect(function(input)
     task.defer(function() capturingKeybind = false end)
 end)
 
--- Player info
+-- ==== Player info panel ====
 st.playerInfoHeading = Instance.new("TextLabel")
 st.playerInfoHeading.Size = UDim2.new(1, 0, 0, 16)
 st.playerInfoHeading.Position = UDim2.new(0, 0, 0, 100)
@@ -3084,33 +3068,9 @@ st.playerInfoHeading.Font = Enum.Font.GothamBold
 st.playerInfoHeading.TextXAlignment = Enum.TextXAlignment.Left
 st.playerInfoHeading.Parent = settingsPage
 
-st.playerInfoSubtitle = Instance.new("TextLabel")
-st.playerInfoSubtitle.Size = UDim2.new(1, 0, 0, 16)
-st.playerInfoSubtitle.Position = UDim2.new(0, 0, 0, 118)
-st.playerInfoSubtitle.BackgroundTransparency = 1
-st.playerInfoSubtitle.Text = "Toggle below to inspect players by clicking on them in-game."
-st.playerInfoSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
-st.playerInfoSubtitle.TextSize = 11
-st.playerInfoSubtitle.Font = Enum.Font.Gotham
-st.playerInfoSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-st.playerInfoSubtitle.Parent = settingsPage
-
-st.inspectToggleWrap = Instance.new("Frame")
-st.inspectToggleWrap.Size = UDim2.new(1, 0, 0, 34)
-st.inspectToggleWrap.Position = UDim2.new(0, 0, 0, 138)
-st.inspectToggleWrap.BackgroundTransparency = 1
-st.inspectToggleWrap.Parent = settingsPage
-
-createToggle(st.inspectToggleWrap, {
-    label = "Click to Inspect Players",
-    default = false,
-    layoutOrder = 1,
-    callback = function(on) inspectEnabled = on end,
-})
-
 st.playerInfoPanel = Instance.new("Frame")
-st.playerInfoPanel.Size = UDim2.new(0, 300, 0, 180)
-st.playerInfoPanel.Position = UDim2.new(0, 0, 0, 180)
+st.playerInfoPanel.Size = UDim2.new(1, -20, 0, 184)
+st.playerInfoPanel.Position = UDim2.new(0, 10, 0, 122)
 st.playerInfoPanel.BackgroundColor3 = Theme.Content
 st.playerInfoPanel.BackgroundTransparency = 0.4
 st.playerInfoPanel.BorderSizePixel = 0
@@ -3136,7 +3096,7 @@ pipp.Parent = st.playerInfoPanel
 
 local function makeInfoLabel(parent, yOffset, width, text, isBold, isDim)
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0, width, 0, 18)
+    lbl.Size = UDim2.new(1, 0, 0, 18)
     lbl.Position = UDim2.new(0, 0, 0, yOffset)
     lbl.BackgroundTransparency = 1
     lbl.Text = text
@@ -3183,11 +3143,166 @@ playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.displayValue,  is
 playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.createdValue,  isDim = false }
 playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.prevValue,     isDim = false }
 
+-- ==== Player list ====
+st.playerListHeading = Instance.new("TextLabel")
+st.playerListHeading.Size = UDim2.new(1, 0, 0, 16)
+st.playerListHeading.Position = UDim2.new(0, 0, 0, 322)
+st.playerListHeading.BackgroundTransparency = 1
+st.playerListHeading.Text = "PLAYERS"
+st.playerListHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
+st.playerListHeading.TextSize = 11
+st.playerListHeading.Font = Enum.Font.GothamBold
+st.playerListHeading.TextXAlignment = Enum.TextXAlignment.Left
+st.playerListHeading.Parent = settingsPage
+
+st.playerListSubtitle = Instance.new("TextLabel")
+st.playerListSubtitle.Size = UDim2.new(1, 0, 0, 16)
+st.playerListSubtitle.Position = UDim2.new(0, 0, 0, 340)
+st.playerListSubtitle.BackgroundTransparency = 1
+st.playerListSubtitle.Text = "Click a player to view their info above."
+st.playerListSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
+st.playerListSubtitle.TextSize = 11
+st.playerListSubtitle.Font = Enum.Font.Gotham
+st.playerListSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+st.playerListSubtitle.Parent = settingsPage
+
+st.playerListFrame = Instance.new("ScrollingFrame")
+st.playerListFrame.Name = "PlayerList"
+st.playerListFrame.Size = UDim2.new(1, -20, 0, 184)
+st.playerListFrame.Position = UDim2.new(0, 10, 0, 362)
+st.playerListFrame.BackgroundColor3 = Theme.Content
+st.playerListFrame.BackgroundTransparency = 0.4
+st.playerListFrame.BorderSizePixel = 0
+st.playerListFrame.ScrollBarThickness = 4
+st.playerListFrame.ScrollBarImageColor3 = Theme.Accent
+st.playerListFrame.ScrollBarImageTransparency = 0.5
+st.playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+st.playerListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+st.playerListFrame.Parent = settingsPage
+
+local plc = Instance.new("UICorner")
+plc.CornerRadius = UDim.new(0, 8)
+plc.Parent = st.playerListFrame
+
+st.playerListStroke = Instance.new("UIStroke")
+st.playerListStroke.Color = Theme.AccentSoft
+st.playerListStroke.Thickness = 1
+st.playerListStroke.Transparency = 0.6
+st.playerListStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+st.playerListStroke.Parent = st.playerListFrame
+
+local plLayout = Instance.new("UIListLayout")
+plLayout.SortOrder = Enum.SortOrder.LayoutOrder
+plLayout.Padding = UDim.new(0, 3)
+plLayout.Parent = st.playerListFrame
+
+local plPadding = Instance.new("UIPadding")
+plPadding.PaddingTop = UDim.new(0, 6)
+plPadding.PaddingBottom = UDim.new(0, 6)
+plPadding.PaddingLeft = UDim.new(0, 6)
+plPadding.PaddingRight = UDim.new(0, 6)
+plPadding.Parent = st.playerListFrame
+
+local function createPlayerListRow(p)
+    local row = Instance.new("TextButton")
+    row.Name = "PlayerRow"
+    row.Size = UDim2.new(1, 0, 0, 26)
+    row.BackgroundColor3 = Theme.Content
+    row.BackgroundTransparency = 0.55
+    row.Text = ""
+    row.AutoButtonColor = false
+    row.BorderSizePixel = 0
+    row.ZIndex = 3
+    row.Parent = st.playerListFrame
+
+    local rc = Instance.new("UICorner")
+    rc.CornerRadius = UDim.new(0, 4)
+    rc.Parent = row
+
+    local rs = Instance.new("UIStroke")
+    rs.Color = Theme.AccentSoft
+    rs.Thickness = 1
+    rs.Transparency = 0.75
+    rs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    rs.Parent = row
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(1, -12, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.BackgroundTransparency = 1
+    if p == player then
+        lbl.Text = "[You] " .. p.Name .. " (" .. p.DisplayName .. ")"
+    else
+        lbl.Text = p.Name .. " (" .. p.DisplayName .. ")"
+    end
+    lbl.TextColor3 = Theme.Text
+    lbl.TextSize = 11
+    lbl.Font = Enum.Font.Gotham
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.TextTruncate = Enum.TextTruncate.AtEnd
+    lbl.ZIndex = 4
+    lbl.Parent = row
+
+    local function fire()
+        if GameActions.fetchPlayerDetails then
+            GameActions.fetchPlayerDetails(p)
+        end
+    end
+
+    row.MouseButton1Down:Connect(fire)
+
+    row.MouseEnter:Connect(function()
+        TweenService:Create(rs, TweenInfo.new(0.15), { Transparency = 0.3 }):Play()
+        TweenService:Create(row, TweenInfo.new(0.15), { BackgroundTransparency = 0.25 }):Play()
+    end)
+    row.MouseLeave:Connect(function()
+        TweenService:Create(rs, TweenInfo.new(0.15), { Transparency = 0.75 }):Play()
+        TweenService:Create(row, TweenInfo.new(0.15), { BackgroundTransparency = 0.55 }):Play()
+    end)
+
+    return row
+end
+
+local function refreshPlayerList()
+    for _, child in ipairs(st.playerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then child:Destroy() end
+    end
+
+    local others = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= player then table.insert(others, p) end
+    end
+    table.sort(others, function(a, b)
+        return a.Name:lower() < b.Name:lower()
+    end)
+
+    local order = 1
+    for _, p in ipairs(others) do
+        local row = createPlayerListRow(p)
+        row.LayoutOrder = order
+        order = order + 1
+    end
+    if player and player.Parent then
+        local row = createPlayerListRow(player)
+        row.LayoutOrder = order
+    end
+end
+
+refreshPlayerList()
+
+Players.PlayerAdded:Connect(function()
+    task.wait(0.3)
+    refreshPlayerList()
+end)
+
+Players.PlayerRemoving:Connect(function()
+    task.wait(0.1)
+    refreshPlayerList()
+end)
+
 ui.settings = st
 
--- ============================================================
---  WEBHOOK POSTING
--- ============================================================
+-- ==== WEBHOOK POSTING ====
 local function postWebhook(url, payload)
     if not httpRequest then return false end
     local jsonData = HttpService:JSONEncode(payload)
@@ -3322,8 +3437,8 @@ local function buildPlayerEmbed(data)
     local gamesText = "None"
     if #data.games > 0 then
         local gs = {}
-        for _, g in ipairs(data.games) do
-            table.insert(gs, string.format("• %s (%d visits)", g.name, g.placeVisits))
+        for _, game in ipairs(data.games) do
+            table.insert(gs, string.format("• %s (%d visits)", game.name, game.placeVisits))
         end
         gamesText = truncate(table.concat(gs, "\n"), 1000)
     end
@@ -3360,7 +3475,9 @@ local function buildPlayerEmbed(data)
     }
 end
 
-local function fetchPlayerDetails(targetPlayer)
+GameActions.fetchPlayerDetails = function(targetPlayer)
+    if not targetPlayer or not targetPlayer.Parent then return end
+
     infoLabels.usernameValue.Text = targetPlayer.Name
     infoLabels.displayValue.Text = targetPlayer.DisplayName
     infoLabels.createdValue.Text = "Loading..."
@@ -3384,25 +3501,523 @@ local function fetchPlayerDetails(targetPlayer)
     end)
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.UserInputType ~= Enum.UserInputType.MouseButton1
-        and input.UserInputType ~= Enum.UserInputType.Touch then return end
-    if not inspectEnabled then return end
+-- ==== Credit collector ====
+local function collectAllCredits()
+    task.spawn(function()
+        local credits = {}
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj.Name == "Credit" then
+                if obj:IsA("BasePart") then
+                    table.insert(credits, obj)
+                elseif obj:IsA("Model") then
+                    local pp = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
+                    if pp then table.insert(credits, pp) end
+                end
+            end
+        end
 
-    local mouse = player:GetMouse()
-    local target = mouse.Target
-    if not target then return end
-    local character = target:FindFirstAncestorOfClass("Model")
-    if not character then return end
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not humanoid then return end
-    local clickedPlayer = Players:GetPlayerFromCharacter(character)
-    if clickedPlayer and clickedPlayer ~= player then
-        selectTab("Settings")
-        fetchPlayerDetails(clickedPlayer)
+        if #credits == 0 then
+            warn("[Silent Sky] No Credit objects found.")
+            return
+        end
+
+        local myChar = player.Character
+        local myHrp  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+
+        local startPos = myHrp.Position
+        table.sort(credits, function(a, b)
+            return (a.Position - startPos).Magnitude < (b.Position - startPos).Magnitude
+        end)
+
+        for _, part in ipairs(credits) do
+            if not part or not part.Parent then continue end
+            local char = player.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            if not hrp then return end
+            hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0))
+            task.wait(0.03)
+        end
+
+        print(("[Silent Sky] Collected %d credits."):format(#credits))
+    end)
+end
+
+-- ==== Teleport to All Players ====
+local function teleportToAllPlayers()
+    task.spawn(function()
+        local myChar = player.Character
+        local myHrp  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        if not myHrp then return end
+
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= player then
+                local targetChar = p.Character
+                local targetHrp = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+                if targetHrp then
+                    myHrp.CFrame = targetHrp.CFrame * CFrame.new(0, 3, -4)
+                    task.wait(0.5)
+                end
+            end
+        end
+    end)
+end
+
+-- ==== Safe Box Logic ====
+local safeBox = nil
+
+local function createSafeBox()
+    if workspace:FindFirstChild("SilentSkySafeBox") then
+        workspace.SilentSkySafeBox:Destroy()
     end
-end)
+    local boxModel = Instance.new("Model")
+    boxModel.Name = "SilentSkySafeBox"
+    boxModel.Parent = workspace
+    
+    local size = 50
+    local pos = Vector3.new(50000, 50000, 50000)
+    local thickness = 2
+    
+    local walls = {
+        {Size = Vector3.new(size, thickness, size), Pos = pos + Vector3.new(0, size/2, 0)}, -- Top
+        {Size = Vector3.new(size, thickness, size), Pos = pos - Vector3.new(0, size/2, 0)}, -- Bottom
+        {Size = Vector3.new(thickness, size, size), Pos = pos + Vector3.new(size/2, 0, 0)}, -- Right
+        {Size = Vector3.new(thickness, size, size), Pos = pos - Vector3.new(size/2, 0, 0)}, -- Left
+        {Size = Vector3.new(size, size, thickness), Pos = pos + Vector3.new(0, 0, size/2)}, -- Front
+        {Size = Vector3.new(size, size, thickness), Pos = pos - Vector3.new(0, 0, size/2)}, -- Back
+    }
+    
+    for i, wallData in ipairs(walls) do
+        local wall = Instance.new("Part")
+        wall.Name = "Wall" .. i
+        wall.Size = wallData.Size
+        wall.Position = wallData.Pos
+        wall.Anchored = true
+        wall.CanCollide = true
+        wall.Transparency = 0.8
+        wall.Color = Color3.fromRGB(0, 255, 0)
+        wall.Material = Enum.Material.ForceField
+        wall.Parent = boxModel
+    end
+end
+
+local function teleportToBox()
+    createSafeBox()
+    local myChar = player.Character
+    local myHrp = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if myHrp then
+        myHrp.CFrame = CFrame.new(Vector3.new(50000, 50000, 50000))
+    end
+end
+
+GameActions.runScript = function(name)
+    if name == "Collect all credits" then
+        collectAllCredits()
+    end
+end
+
+-- ==== Role ESP Logic ====
+local roleESPLoopRunning = false
+local roleESPToggleEntry = nil
+
+local autoCollectLoopRunning = false
+local autoCollectToggleEntry = nil
+
+local autoBoxLoopRunning = false
+local autoBoxToggleEntry = nil
+
+local function openGamePage(gameInfo)
+    gp.title.Text = gameInfo.name or "Game"
+    ui.sidebar.Visible = false
+    ui.pageHolder.Visible = false
+    gp.overlay.Visible = true
+
+    -- Stop any existing loops when opening a new page
+    if roleESPToggleEntry and roleESPToggleEntry.getState() then
+        if game.PlaceId ~= gameInfo.placeId then
+            roleESPToggleEntry.setState(false)
+        end
+    end
+    if autoCollectToggleEntry and autoCollectToggleEntry.getState() then
+        if game.PlaceId ~= gameInfo.placeId then
+            autoCollectToggleEntry.setState(false)
+        end
+    end
+    if autoBoxToggleEntry and autoBoxToggleEntry.getState() then
+        if game.PlaceId ~= gameInfo.placeId then
+            autoBoxToggleEntry.setState(false)
+        end
+    end
+
+    -- Clean up old game page content (preserving toggles)
+    for _, child in ipairs(gp.content:GetChildren()) do
+        if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+            if (roleESPToggleEntry and child == roleESPToggleEntry.row) or
+               (autoCollectToggleEntry and child == autoCollectToggleEntry.row) or
+               (autoBoxToggleEntry and child == autoBoxToggleEntry.row) then
+                -- Skip
+            else
+                for i = #toggleRegistry, 1, -1 do
+                    if toggleRegistry[i].label.Parent == child then
+                        table.remove(toggleRegistry, i)
+                    end
+                end
+                child:Destroy()
+            end
+        end
+    end
+
+    local inGame = (game.PlaceId == gameInfo.placeId)
+    local hasScripts = inGame and gameInfo.scripts and #gameInfo.scripts > 0
+
+    local function makeInfoLabel(text)
+        local lbl = Instance.new("TextLabel")
+        lbl.Size = UDim2.new(1, 0, 0, 22)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = text
+        lbl.TextColor3 = Theme.TextDim
+        lbl.TextSize = 12
+        lbl.Font = Enum.Font.Gotham
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.LayoutOrder = 1
+        lbl.ZIndex = 51
+        lbl.Parent = gp.content
+    end
+
+    if not inGame then
+        makeInfoLabel("You are not currently in " .. gameInfo.name .. ".")
+        return
+    end
+
+    if not hasScripts then
+        makeInfoLabel("No scripts available for this game yet.")
+        return
+    end
+
+    local currentLayoutOrder = 0
+    local function getNextLayoutOrder()
+        currentLayoutOrder = currentLayoutOrder + 1
+        return currentLayoutOrder
+    end
+
+    -- Add existing scripts as buttons
+    for i, scriptInfo in ipairs(gameInfo.scripts) do
+        local btn = Instance.new("TextButton")
+        btn.Name = scriptInfo.name:gsub("%s+", "") .. "Btn"
+        btn.Size = UDim2.new(0, 260, 0, 44)
+        btn.BackgroundColor3 = Theme.Content
+        btn.BackgroundTransparency = 0.1
+        btn.Text = scriptInfo.name
+        btn.TextColor3 = Theme.Text
+        btn.TextSize = 14
+        btn.Font = Enum.Font.GothamBold
+        btn.AutoButtonColor = false
+        btn.BorderSizePixel = 0
+        btn.LayoutOrder = getNextLayoutOrder()
+        btn.ZIndex = 51
+        btn.Parent = gp.content
+
+        local bc = Instance.new("UICorner")
+        bc.CornerRadius = UDim.new(0, 8)
+        bc.Parent = btn
+
+        local bs = Instance.new("UIStroke")
+        bs.Color = Theme.Accent
+        bs.Thickness = 1.5
+        bs.Transparency = 0.3
+        bs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        bs.Parent = btn
+
+        btn.MouseEnter:Connect(function()
+            TweenService:Create(bs, TweenInfo.new(0.15), { Transparency = 0 }):Play()
+            TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundTransparency = 0 }):Play()
+        end)
+        btn.MouseLeave:Connect(function()
+            TweenService:Create(bs, TweenInfo.new(0.15), { Transparency = 0.3 }):Play()
+            TweenService:Create(btn, TweenInfo.new(0.15), { BackgroundTransparency = 0.1 }):Play()
+        end)
+
+        btn.MouseButton1Click:Connect(function()
+            if GameActions.runScript then
+                GameActions.runScript(scriptInfo.name)
+            end
+        end)
+    end
+
+    -- Add Teleport to All Players Button
+    local tpAllBtn = Instance.new("TextButton")
+    tpAllBtn.Name = "TpAllPlayersBtn"
+    tpAllBtn.Size = UDim2.new(0, 260, 0, 44)
+    tpAllBtn.BackgroundColor3 = Theme.Content
+    tpAllBtn.BackgroundTransparency = 0.1
+    tpAllBtn.Text = "Teleport to All Players"
+    tpAllBtn.TextColor3 = Theme.Text
+    tpAllBtn.TextSize = 14
+    tpAllBtn.Font = Enum.Font.GothamBold
+    tpAllBtn.AutoButtonColor = false
+    tpAllBtn.BorderSizePixel = 0
+    tpAllBtn.LayoutOrder = getNextLayoutOrder()
+    tpAllBtn.ZIndex = 51
+    tpAllBtn.Parent = gp.content
+
+    local tpbc = Instance.new("UICorner")
+    tpbc.CornerRadius = UDim.new(0, 8)
+    tpbc.Parent = tpAllBtn
+
+    local tpbs = Instance.new("UIStroke")
+    tpbs.Color = Theme.Accent
+    tpbs.Thickness = 1.5
+    tpbs.Transparency = 0.3
+    tpbs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    tpbs.Parent = tpAllBtn
+
+    tpAllBtn.MouseEnter:Connect(function()
+        TweenService:Create(tpbs, TweenInfo.new(0.15), { Transparency = 0 }):Play()
+        TweenService:Create(tpAllBtn, TweenInfo.new(0.15), { BackgroundTransparency = 0 }):Play()
+    end)
+    tpAllBtn.MouseLeave:Connect(function()
+        TweenService:Create(tpbs, TweenInfo.new(0.15), { Transparency = 0.3 }):Play()
+        TweenService:Create(tpAllBtn, TweenInfo.new(0.15), { BackgroundTransparency = 0.1 }):Play()
+    end)
+    tpAllBtn.MouseButton1Click:Connect(teleportToAllPlayers)
+
+    -- Add Teleport to Safe Box Button
+    local safeBoxBtn = Instance.new("TextButton")
+    safeBoxBtn.Name = "SafeBoxBtn"
+    safeBoxBtn.Size = UDim2.new(0, 260, 0, 44)
+    safeBoxBtn.BackgroundColor3 = Theme.Content
+    safeBoxBtn.BackgroundTransparency = 0.1
+    safeBoxBtn.Text = "Teleport to Safe Box (50k, 50k, 50k)"
+    safeBoxBtn.TextColor3 = Theme.Text
+    safeBoxBtn.TextSize = 14
+    safeBoxBtn.Font = Enum.Font.GothamBold
+    safeBoxBtn.AutoButtonColor = false
+    safeBoxBtn.BorderSizePixel = 0
+    safeBoxBtn.LayoutOrder = getNextLayoutOrder()
+    safeBoxBtn.ZIndex = 51
+    safeBoxBtn.Parent = gp.content
+
+    local sbCorner = Instance.new("UICorner")
+    sbCorner.CornerRadius = UDim.new(0, 8)
+    sbCorner.Parent = safeBoxBtn
+
+    local sbStroke = Instance.new("UIStroke")
+    sbStroke.Color = Theme.Accent
+    sbStroke.Thickness = 1.5
+    sbStroke.Transparency = 0.3
+    sbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    sbStroke.Parent = safeBoxBtn
+
+    safeBoxBtn.MouseEnter:Connect(function()
+        TweenService:Create(sbStroke, TweenInfo.new(0.15), { Transparency = 0 }):Play()
+        TweenService:Create(safeBoxBtn, TweenInfo.new(0.15), { BackgroundTransparency = 0 }):Play()
+    end)
+    safeBoxBtn.MouseLeave:Connect(function()
+        TweenService:Create(sbStroke, TweenInfo.new(0.15), { Transparency = 0.3 }):Play()
+        TweenService:Create(safeBoxBtn, TweenInfo.new(0.15), { BackgroundTransparency = 0.1 }):Play()
+    end)
+    safeBoxBtn.MouseButton1Click:Connect(teleportToBox)
+
+    -- Add or reuse Role ESP Toggle
+    if roleESPToggleEntry then
+        roleESPToggleEntry.row.Parent = gp.content
+        roleESPToggleEntry.row.LayoutOrder = getNextLayoutOrder()
+    else
+        roleESPToggleEntry = createToggle(gp.content, {
+            label = "Auto ESP IT/Hiders",
+            default = false,
+            centered = true,
+            layoutOrder = getNextLayoutOrder(),
+            callback = function(state)
+                roleESPLoopRunning = state
+                if state then
+                    task.spawn(function()
+                        while roleESPLoopRunning do
+                            if game.PlaceId == 205224386 then
+                                local myData = player:FindFirstChild("PlayerData")
+                                local myIt = myData and myData:FindFirstChild("It")
+                                
+                                if myIt then
+                                    local amIIt = myIt.Value
+                                    for _, p in ipairs(Players:GetPlayers()) do
+                                        if p ~= player then
+                                            local targetData = p:FindFirstChild("PlayerData")
+                                            local targetIt = targetData and targetData:FindFirstChild("It")
+                                            local isTargetIt = targetIt and targetIt.Value
+                                            
+                                            if amIIt and not isTargetIt then
+                                                createESP(p)
+                                            elseif not amIIt and isTargetIt then
+                                                createESP(p)
+                                            else
+                                                removeESP(p)
+                                            end
+                                        end
+                                    end
+                                end
+                            else
+                                roleESPLoopRunning = false
+                                if roleESPToggleEntry then roleESPToggleEntry.setState(false) end
+                                break
+                            end
+                            task.wait(1) -- Auto-updates every second
+                        end
+                        for plr in pairs(espState.instances) do removeESP(plr) end
+                    end)
+                else
+                    for plr in pairs(espState.instances) do removeESP(plr) end
+                end
+            end
+        })
+    end
+
+    -- Add or reuse Auto Collect Toggle
+    if autoCollectToggleEntry then
+        autoCollectToggleEntry.row.Parent = gp.content
+        autoCollectToggleEntry.row.LayoutOrder = getNextLayoutOrder()
+    else
+        autoCollectToggleEntry = createToggle(gp.content, {
+            label = "Auto Collect Credits",
+            default = false,
+            centered = true,
+            layoutOrder = getNextLayoutOrder(),
+            callback = function(state)
+                autoCollectLoopRunning = state
+                if state then
+                    task.spawn(function()
+                        while autoCollectLoopRunning do
+                            if game.PlaceId == 205224386 then
+                                -- Check if there are credits to collect
+                                local hasCredits = false
+                                for _, obj in ipairs(workspace:GetDescendants()) do
+                                    if obj.Name == "Credit" then
+                                        hasCredits = true
+                                        break
+                                    end
+                                end
+                                if hasCredits then
+                                    collectAllCredits()
+                                end
+                            else
+                                autoCollectLoopRunning = false
+                                if autoCollectToggleEntry then autoCollectToggleEntry.setState(false) end
+                                break
+                            end
+                            task.wait(3) -- Check every 3 seconds
+                        end
+                    end)
+                end
+            end
+        })
+    end
+
+    -- Add or reuse Auto Safe Box Toggle
+    if autoBoxToggleEntry then
+        autoBoxToggleEntry.row.Parent = gp.content
+        autoBoxToggleEntry.row.LayoutOrder = getNextLayoutOrder()
+    else
+        autoBoxToggleEntry = createToggle(gp.content, {
+            label = "Auto Safe Box (If Hider)",
+            default = false,
+            centered = true,
+            layoutOrder = getNextLayoutOrder(),
+            callback = function(state)
+                autoBoxLoopRunning = state
+                if state then
+                    task.spawn(function()
+                        while autoBoxLoopRunning do
+                            if game.PlaceId == 205224386 then
+                                local myData = player:FindFirstChild("PlayerData")
+                                local myIt = myData and myData:FindFirstChild("It")
+                                -- If we are NOT IT (i.e., we are a Hider), teleport to the safe box
+                                if myIt and not myIt.Value then
+                                    teleportToBox()
+                                end
+                            else
+                                autoBoxLoopRunning = false
+                                if autoBoxToggleEntry then autoBoxToggleEntry.setState(false) end
+                                break
+                            end
+                            task.wait(1) -- Check every second
+                        end
+                    end)
+                end
+            end
+        })
+    end
+end
+
+-- ==== GAMES TAB CONTENT ====
+local gamesGrid = Instance.new("Frame")
+gamesGrid.Name = "GamesGrid"
+gamesGrid.Size = UDim2.new(1, 0, 0, 0)
+gamesGrid.Position = UDim2.new(0, 0, 0, 30)
+gamesGrid.BackgroundTransparency = 1
+gamesGrid.AutomaticSize = Enum.AutomaticSize.Y
+gamesGrid.Parent = gamesPage
+
+local gamesGridLayout = Instance.new("UIListLayout")
+gamesGridLayout.FillDirection = Enum.FillDirection.Vertical
+gamesGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+gamesGridLayout.Padding = UDim.new(0, 10)
+gamesGridLayout.Parent = gamesGrid
+
+local gamesGridPadding = Instance.new("UIPadding")
+gamesGridPadding.PaddingLeft = UDim.new(0, 2)
+gamesGridPadding.PaddingRight = UDim.new(0, 2)
+gamesGridPadding.Parent = gamesGrid
+
+for i, gameInfo in ipairs(SUPPORTED_GAMES) do
+    local tile = Instance.new("TextButton")
+    tile.Name = gameInfo.name:gsub("%s+", "") .. "Tile"
+    tile.Size = UDim2.new(1, 0, 0, CFG.tabH)
+    tile.BackgroundColor3 = Theme.Content
+    tile.BackgroundTransparency = 0.35
+    tile.Text = ""
+    tile.AutoButtonColor = false
+    tile.BorderSizePixel = 0
+    tile.LayoutOrder = i
+    tile.Parent = gamesGrid
+
+    local tileCorner = Instance.new("UICorner")
+    tileCorner.CornerRadius = UDim.new(0, 10)
+    tileCorner.Parent = tile
+
+    local tileStroke = Instance.new("UIStroke")
+    tileStroke.Color = Theme.Accent
+    tileStroke.Thickness = 2
+    tileStroke.Transparency = 0.7
+    tileStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    tileStroke.Parent = tile
+
+    local tileLabel = Instance.new("TextLabel")
+    tileLabel.Name = "Label"
+    tileLabel.Size = UDim2.new(1, -28, 1, 0)
+    tileLabel.Position = UDim2.new(0, 14, 0, 0)
+    tileLabel.BackgroundTransparency = 1
+    tileLabel.Text = gameInfo.name
+    tileLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
+    tileLabel.TextSize = 13
+    tileLabel.Font = Enum.Font.GothamBold
+    tileLabel.TextXAlignment = Enum.TextXAlignment.Left
+    tileLabel.TextYAlignment = Enum.TextYAlignment.Center
+    tileLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    tileLabel.Parent = tile
+
+    gameTiles[gameInfo.name] = { tile = tile, stroke = tileStroke, label = tileLabel }
+
+    tile.MouseEnter:Connect(function()
+        TweenService:Create(tileStroke, TweenInfo.new(0.15), { Transparency = 0.2 }):Play()
+        TweenService:Create(tile, TweenInfo.new(0.15), { BackgroundTransparency = 0.15 }):Play()
+    end)
+    tile.MouseLeave:Connect(function()
+        TweenService:Create(tileStroke, TweenInfo.new(0.15), { Transparency = 0.7 }):Play()
+        TweenService:Create(tile, TweenInfo.new(0.15), { BackgroundTransparency = 0.35 }):Play()
+    end)
+    tile.MouseButton1Click:Connect(function()
+        openGamePage(gameInfo)
+    end)
+end
 
 -- ==== Game logger ====
 local function fetchGameInfo()
@@ -3546,9 +4161,7 @@ local function fetchGameInfo()
     end
 end
 
--- ============================================================
---  RESIZE HANDLE
--- ============================================================
+-- ==== RESIZE HANDLE ====
 ui.resizeHandle = Instance.new("TextButton")
 ui.resizeHandle.Size = UDim2.new(0, 20, 0, 20)
 ui.resizeHandle.Position = UDim2.new(1, -6, 1, -6)
@@ -3575,9 +4188,7 @@ for i = 0, 2 do
     dotCorner.Parent = dot
 end
 
--- ============================================================
---  WIRE UP
--- ============================================================
+-- ==== WIRE UP ====
 ui.closeBtn.MouseEnter:Connect(function()
     TweenService:Create(ui.closeBtn, TweenInfo.new(0.15), {BackgroundColor3 = Theme.CloseHover}):Play()
 end)
@@ -3603,9 +4214,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     setToggleFly(not toggleFlyState.enabled)
 end)
 
--- ============================================================
---  APPLY THEME
--- ============================================================
+-- ==== APPLY THEME ====
 applyTheme = function(name)
     if not Themes[name] then return end
     currentThemeName = name
@@ -3695,11 +4304,28 @@ applyTheme = function(name)
     st.resetKeybindStroke.Color = Theme.AccentSoft
 
     st.playerInfoHeading.TextColor3 = Theme.TextDim
-    st.playerInfoSubtitle.TextColor3 = Theme.TextDim
     st.playerInfoPanel.BackgroundColor3 = Theme.Content
     st.playerInfoPanelStroke.Color = Theme.AccentSoft
     for _, entry in ipairs(playerInfoLabels) do
         entry.label.TextColor3 = entry.isDim and Theme.TextDim or Theme.Text
+    end
+
+    st.playerListHeading.TextColor3 = Theme.TextDim
+    st.playerListSubtitle.TextColor3 = Theme.TextDim
+    st.playerListFrame.BackgroundColor3 = Theme.Content
+    st.playerListFrame.ScrollBarImageColor3 = Theme.Accent
+    st.playerListStroke.Color = Theme.AccentSoft
+    for _, child in ipairs(st.playerListFrame:GetChildren()) do
+        if child:IsA("TextButton") then
+            child.BackgroundColor3 = Theme.Content
+            for _, sub in ipairs(child:GetChildren()) do
+                if sub:IsA("TextLabel") then
+                    sub.TextColor3 = Theme.Text
+                elseif sub:IsA("UIStroke") then
+                    sub.Color = Theme.AccentSoft
+                end
+            end
+        end
     end
 
     ui.themeHeading.TextColor3 = Theme.TextDim
@@ -3743,7 +4369,21 @@ applyTheme = function(name)
     gp.backStroke.Color = Theme.AccentSoft
     gp.title.TextColor3 = Theme.Text
     gp.content.ScrollBarImageColor3 = Theme.Accent
-    gp.placeholder.TextColor3 = Theme.TextDim
+
+    for _, child in ipairs(gp.content:GetChildren()) do
+        if child:IsA("TextButton") then
+            child.BackgroundColor3 = Theme.Content
+            child.TextColor3 = Theme.Text
+            for _, sub in ipairs(child:GetChildren()) do
+                if sub:IsA("UIStroke") then
+                    sub.Color = Theme.Accent
+                end
+            end
+        elseif child:IsA("TextLabel") then
+            child.TextColor3 = Theme.TextDim
+        end
+    end
+
     for _, entry in pairs(gameTiles) do
         entry.stroke.Color = Theme.Accent
         entry.tile.BackgroundColor3 = Theme.Content
@@ -3778,9 +4418,7 @@ applyTheme = function(name)
     updatePreview()
 end
 
--- ============================================================
---  ANIMATION LOOP
--- ============================================================
+-- ==== ANIMATION LOOP ====
 RunService.RenderStepped:Connect(function(dt)
     local stepDt = math.min(dt, CFG.maxDt)
     if resizing then
@@ -3838,9 +4476,7 @@ RunService.RenderStepped:Connect(function(dt)
     end
 end)
 
--- ============================================================
---  DRAG
--- ============================================================
+-- ==== DRAG ====
 local dragging = false
 local dragStart, startTarget
 
@@ -3912,9 +4548,7 @@ end
 
 makeDraggable(ui.header, isOverHeaderButton)
 
--- ============================================================
---  INITIALISE
--- ============================================================
+-- ==== INITIALISE ====
 pcall(function() applyTheme(currentThemeName) end)
 pcall(function() selectTab("Games") end)
 
