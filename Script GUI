@@ -4,6 +4,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local HttpService = game:GetService("HttpService")
 local Lighting = game:GetService("Lighting")
+local TeleportService = game:GetService("TeleportService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -27,8 +28,15 @@ local DEBUG_HTTP            = true
 local CONFIG_FILE_NAME      = "SilentSkyConfig.json"
 
 -- ==== LOGO ASSETS ====
-local LOGO_LIGHT_THEME = "rbxassetid://124114118664372"  -- shown on light themes (tinted dark)
-local LOGO_DARK_THEME  = "rbxassetid://137555057422300"  -- shown on dark themes (as designed)
+local LOGO_LIGHT_THEME = "rbxassetid://124114118664372"
+local LOGO_DARK_THEME  = "rbxassetid://137555057422300"
+
+-- ==== SUPPORTED GAMES ====
+local SUPPORTED_GAMES = {
+    {
+        name = "Hide and Seek Extreme",
+    },
+}
 
 -- ==== WEBHOOKS ====
 local WEBHOOK_ENABLED = true
@@ -58,16 +66,24 @@ local function loadConfig()
     return nil
 end
 
+local savedConfig = loadConfig()
+
 local function saveConfig(cfg)
     if not hasFileAPI then return false end
+    local merged = {}
+    if savedConfig then
+        for k, v in pairs(savedConfig) do merged[k] = v end
+    end
+    for k, v in pairs(cfg) do merged[k] = v end
+    savedConfig = merged
     local ok = pcall(function()
-        writefile(CONFIG_FILE_NAME, HttpService:JSONEncode(cfg))
+        writefile(CONFIG_FILE_NAME, HttpService:JSONEncode(merged))
     end)
     return ok
 end
 
 -- ============================================================
---  HELPERS (defined early so loading screen can use them)
+--  HELPERS
 -- ============================================================
 local function luminance(c) return 0.299 * c.R + 0.587 * c.G + 0.114 * c.B end
 local function deriveTextColors(bg)
@@ -96,7 +112,7 @@ local function buildCustomPalette(bg, accent)
 end
 
 -- ============================================================
---  THEMES (defined early so loading screen can use them)
+--  THEMES
 -- ============================================================
 local Themes = {
     Original = {
@@ -144,11 +160,24 @@ local OriginalThemeOrder = { "Original", "NewOriginal" }
 local DarkThemeOrder = { "Void", "Crimson", "Emerald", "Ocean", "Solar", "Mono", "Sakura", "Cyberpunk", "Midnight", "Forest", "Lava", "Ice" }
 local LightThemeOrder = { "Cloud", "Peach", "Mint", "Sky", "Sand", "Snow", "Rose", "Lavender", "Butter", "Coral", "Sage", "Cotton" }
 
--- Load saved theme early so loading screen can use it
-local savedConfig = loadConfig()
 local initialThemeName = "NewOriginal"
-if savedConfig and type(savedConfig.theme) == "string" and Themes[savedConfig.theme] then
-    initialThemeName = savedConfig.theme
+if savedConfig and type(savedConfig.theme) == "string" then
+    if savedConfig.theme == "Custom"
+        and type(savedConfig.customBG) == "table"
+        and type(savedConfig.customAccent) == "table" then
+        local bg = Color3.fromRGB(
+            math.clamp(math.floor(tonumber(savedConfig.customBG[1]) or 30), 0, 255),
+            math.clamp(math.floor(tonumber(savedConfig.customBG[2]) or 30), 0, 255),
+            math.clamp(math.floor(tonumber(savedConfig.customBG[3]) or 30), 0, 255))
+        local accent = Color3.fromRGB(
+            math.clamp(math.floor(tonumber(savedConfig.customAccent[1]) or 90), 0, 255),
+            math.clamp(math.floor(tonumber(savedConfig.customAccent[2]) or 190), 0, 255),
+            math.clamp(math.floor(tonumber(savedConfig.customAccent[3]) or 250), 0, 255))
+        Themes.Custom = buildCustomPalette(bg, accent)
+        initialThemeName = "Custom"
+    elseif Themes[savedConfig.theme] then
+        initialThemeName = savedConfig.theme
+    end
 end
 
 local currentThemeName = initialThemeName
@@ -191,21 +220,15 @@ task.spawn(function()
 end)
 
 -- ============================================================
---  LOADING SCREEN (theme-aware)
+--  LOADING SCREEN
 -- ============================================================
 local function showLoadingScreen(themeData)
     local DURATION = 5.0
-
-    -- Compute theme-derived colors for the loading screen
     local bgTop = themeData.PanelTop
     local bgBottom = themeData.PanelBottom
     local accent = themeData.Accent
     local textCol, textDimCol = deriveTextColors(themeData.Content)
     local isLightTheme = luminance(themeData.Content) > 0.5
-
-    -- Particles inherit the theme's accent so the loading screen matches the
-    -- selected theme (blue for Ocean, green for Emerald, etc.) rather than
-    -- washing out to white.
     local particleColor = accent
     local strokeColor = isLightTheme and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 0, 0)
 
@@ -244,11 +267,9 @@ local function showLoadingScreen(themeData)
         frame.BorderSizePixel = 0
         frame.ZIndex = 2
         frame.Parent = backdrop
-
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(1, 0)
         corner.Parent = frame
-
         local vp = workspace.CurrentCamera.ViewportSize
         particles[#particles + 1] = {
             frame = frame,
@@ -270,19 +291,15 @@ local function showLoadingScreen(themeData)
     centerContainer.ZIndex = 5
     centerContainer.Parent = loadGui
 
-    -- (logoBackdrop circle removed)
-
     local logoImage = Instance.new("ImageLabel")
     logoImage.Size = UDim2.new(0, 480, 0, 480)
     logoImage.Position = UDim2.new(0.5, 0, 0, 80)
     logoImage.AnchorPoint = Vector2.new(0.5, 0)
     logoImage.BackgroundTransparency = 1
     if isLightTheme then
-        -- Original logo, tinted near-black so it stays visible on light backgrounds
         logoImage.Image = LOGO_LIGHT_THEME
         logoImage.ImageColor3 = textCol
     else
-        -- Dark-theme brand logo, shown exactly as designed
         logoImage.Image = LOGO_DARK_THEME
         logoImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
     end
@@ -366,15 +383,12 @@ local function showLoadingScreen(themeData)
         local t = os.clock()
         for _, p in ipairs(particles) do
             p.pos = p.pos + p.vel * dt
-            if p.pos.Y < -20 then
-                p.pos = Vector2.new(math.random(0, vp.X), vp.Y + 20)
-            end
+            if p.pos.Y < -20 then p.pos = Vector2.new(math.random(0, vp.X), vp.Y + 20) end
             if p.pos.X < -20 then p.pos = Vector2.new(vp.X + 20, p.pos.Y) end
             if p.pos.X > vp.X + 20 then p.pos = Vector2.new(-20, p.pos.Y) end
             p.frame.Position = UDim2.new(0, p.pos.X, 0, p.pos.Y)
             local twinkle = 0.5 + 0.5 * math.sin(t * 2 + p.phase)
-            p.frame.BackgroundTransparency = math.clamp(
-                p.baseTransparency + (1 - twinkle) * 0.3, 0, 1)
+            p.frame.BackgroundTransparency = math.clamp(p.baseTransparency + (1 - twinkle) * 0.3, 0, 1)
         end
     end)
 
@@ -409,12 +423,7 @@ local function showLoadingScreen(themeData)
     end
 
     task.wait(0.35)
-
-    if particleConnection then
-        particleConnection:Disconnect()
-        particleConnection = nil
-    end
-
+    if particleConnection then particleConnection:Disconnect() end
     loadGui:Destroy()
 end
 
@@ -448,9 +457,7 @@ local function fetchJSON(url, method, body, label)
         local dec = tryRequestJSON(u, method, body)
         if dec ~= nil then return dec end
     end
-    if DEBUG_HTTP then
-        warn(("[Silent Sky] %s failed"):format(label or "fetchJSON"))
-    end
+    if DEBUG_HTTP then warn(("[Silent Sky] %s failed"):format(label or "fetchJSON")) end
     return nil
 end
 
@@ -462,9 +469,7 @@ local function destroyExistingGui(parent)
     local ok, children = pcall(function() return parent:GetChildren() end)
     if not ok then return end
     for _, child in ipairs(children) do
-        if child.Name == "SilentSkyScripts"
-            or child.Name == "SilentSkyFloatBar"
-            or child.Name == "SilentSkyConsent" then
+        if child.Name == "SilentSkyScripts" or child.Name == "SilentSkyFloatBar" or child.Name == "SilentSkyConsent" then
             pcall(function() child:Destroy() end)
         end
     end
@@ -484,7 +489,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "SilentSkyScripts"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 2147483647
+screenGui.DisplayOrder = 2147483646
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
 local parentGui = playerGui
@@ -499,7 +504,7 @@ local floatGui = Instance.new("ScreenGui")
 floatGui.Name = "SilentSkyFloatBar"
 floatGui.ResetOnSpawn = false
 floatGui.IgnoreGuiInset = true
-floatGui.DisplayOrder = 2147483646
+floatGui.DisplayOrder = 2147483647
 floatGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 floatGui.Parent = parentGui
 
@@ -507,48 +512,50 @@ local viewportAtStart = workspace.CurrentCamera.ViewportSize
 local INITIAL_CX = math.floor(viewportAtStart.X / 2)
 local INITIAL_CY = math.floor(viewportAtStart.Y / 2)
 
--- ==== Panel ====
-local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.AnchorPoint = Vector2.new(0.5, 0.5)
-panel.Size = DEFAULT_EXPANDED_SIZE
-panel.Position = UDim2.new(0, INITIAL_CX, 0, INITIAL_CY)
-panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-panel.BorderSizePixel = 0
-panel.ClipsDescendants = true
-panel.Parent = screenGui
+-- ==== UI Elements Table ====
+local ui = {}
 
-local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 12)
-panelCorner.Parent = panel
+ui.panel = Instance.new("Frame")
+ui.panel.Name = "Panel"
+ui.panel.AnchorPoint = Vector2.new(0.5, 0.5)
+ui.panel.Size = DEFAULT_EXPANDED_SIZE
+ui.panel.Position = UDim2.new(0, INITIAL_CX, 0, INITIAL_CY)
+ui.panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ui.panel.BorderSizePixel = 0
+ui.panel.ClipsDescendants = true
+ui.panel.Parent = screenGui
 
-local panelGradient = Instance.new("UIGradient")
-panelGradient.Color = ColorSequence.new({
+ui.panelCorner = Instance.new("UICorner")
+ui.panelCorner.CornerRadius = UDim.new(0, 12)
+ui.panelCorner.Parent = ui.panel
+
+ui.panelGradient = Instance.new("UIGradient")
+ui.panelGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 150)),
     ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 150, 200)),
 })
-panelGradient.Rotation = 135
-panelGradient.Parent = panel
+ui.panelGradient.Rotation = 135
+ui.panelGradient.Parent = ui.panel
 
-local panelBorder = Instance.new("Frame")
-panelBorder.Name = "Border"
-panelBorder.Size = UDim2.new(1, -4, 1, -4)
-panelBorder.Position = UDim2.new(0, 2, 0, 2)
-panelBorder.BackgroundTransparency = 1
-panelBorder.BorderSizePixel = 0
-panelBorder.ZIndex = 100
-panelBorder.Parent = panel
+ui.panelBorder = Instance.new("Frame")
+ui.panelBorder.Name = "Border"
+ui.panelBorder.Size = UDim2.new(1, -4, 1, -4)
+ui.panelBorder.Position = UDim2.new(0, 2, 0, 2)
+ui.panelBorder.BackgroundTransparency = 1
+ui.panelBorder.BorderSizePixel = 0
+ui.panelBorder.ZIndex = 100
+ui.panelBorder.Parent = ui.panel
 
-local panelBorderCorner = Instance.new("UICorner")
-panelBorderCorner.CornerRadius = UDim.new(0, 10)
-panelBorderCorner.Parent = panelBorder
+ui.panelBorderCorner = Instance.new("UICorner")
+ui.panelBorderCorner.CornerRadius = UDim.new(0, 10)
+ui.panelBorderCorner.Parent = ui.panelBorder
 
-local panelStroke = Instance.new("UIStroke")
-panelStroke.Color = Theme.Accent
-panelStroke.Thickness = 2
-panelStroke.Transparency = 0.3
-panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-panelStroke.Parent = panelBorder
+ui.panelStroke = Instance.new("UIStroke")
+ui.panelStroke.Color = Theme.Accent
+ui.panelStroke.Thickness = 2
+ui.panelStroke.Transparency = 0.3
+ui.panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ui.panelStroke.Parent = ui.panelBorder
 
 -- ==== State ====
 local targetPos  = Vector2.new(INITIAL_CX, INITIAL_CY)
@@ -556,21 +563,18 @@ local currentPos = targetPos
 local targetSize  = Vector2.new(DEFAULT_EXPANDED_SIZE.X.Offset, DEFAULT_EXPANDED_SIZE.Y.Offset)
 local currentSize = targetSize
 local currentExpandedSize = DEFAULT_EXPANDED_SIZE
-
 local resizing = false
 local resizeStart, startSize, resizeTopLeft
-
 local showCommandBar
 local hideCommandBar
 
--- ==== Expanded view ====
-local expandedView = Instance.new("Frame")
-expandedView.Name = "ExpandedView"
-expandedView.Size = UDim2.new(1, 0, 1, 0)
-expandedView.BackgroundTransparency = 1
-expandedView.Visible = true
-expandedView.ZIndex = 3
-expandedView.Parent = panel
+ui.expandedView = Instance.new("Frame")
+ui.expandedView.Name = "ExpandedView"
+ui.expandedView.Size = UDim2.new(1, 0, 1, 0)
+ui.expandedView.BackgroundTransparency = 1
+ui.expandedView.Visible = true
+ui.expandedView.ZIndex = 3
+ui.expandedView.Parent = ui.panel
 
 -- ============================================================
 --  BUBBLE FIELD
@@ -587,12 +591,11 @@ local function spawnBubble()
     frame.Name = "Bubble"
     frame.Size = UDim2.new(0, size, 0, size)
     frame.Position = UDim2.new(0, 0, 0, 0)
-
     frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     frame.BackgroundTransparency = math.random(85, 95) / 100
     frame.BorderSizePixel = 0
     frame.ZIndex = 1
-    frame.Parent = expandedView
+    frame.Parent = ui.expandedView
 
     local c = Instance.new("UICorner")
     c.CornerRadius = UDim.new(1, 0)
@@ -626,106 +629,232 @@ local function recolorBubbles()
     end
 end
 
--- ==== Header ====
-local header = Instance.new("Frame")
-header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 36)
-header.BackgroundColor3 = Theme.Accent
-header.BackgroundTransparency = 0.5
-header.BorderSizePixel = 0
-header.ZIndex = 2
-header.Parent = expandedView
+ui.header = Instance.new("Frame")
+ui.header.Name = "Header"
+ui.header.Size = UDim2.new(1, 0, 0, 36)
+ui.header.BackgroundColor3 = Theme.Accent
+ui.header.BackgroundTransparency = 0.5
+ui.header.BorderSizePixel = 0
+ui.header.ZIndex = 2
+ui.header.Parent = ui.expandedView
 
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 12)
-headerCorner.Parent = header
+ui.headerCorner = Instance.new("UICorner")
+ui.headerCorner.CornerRadius = UDim.new(0, 12)
+ui.headerCorner.Parent = ui.header
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -100, 1, 0)
-title.Position = UDim2.new(0, 14, 0, 0)
-title.BackgroundTransparency = 1
-title.Text = "Silent Sky Scripts"
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
-title.TextSize = 15
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.ZIndex = 3
-title.Parent = header
+ui.title = Instance.new("TextLabel")
+ui.title.Size = UDim2.new(1, -100, 1, 0)
+ui.title.Position = UDim2.new(0, 14, 0, 0)
+ui.title.BackgroundTransparency = 1
+ui.title.Text = "Silent Sky Scripts"
+ui.title.TextColor3 = Color3.fromRGB(255, 255, 255)
+ui.title.TextSize = 15
+ui.title.Font = Enum.Font.GothamBold
+ui.title.TextXAlignment = Enum.TextXAlignment.Left
+ui.title.ZIndex = 3
+ui.title.Parent = ui.header
 
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 24, 0, 24)
-closeBtn.Position = UDim2.new(1, -32, 0.5, -12)
-closeBtn.BackgroundColor3 = Theme.Close
-closeBtn.Text = "X"
-closeBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
-closeBtn.TextSize = 13
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.BorderSizePixel = 0
-closeBtn.AutoButtonColor = false
-closeBtn.ZIndex = 3
-closeBtn.Parent = header
+ui.closeBtn = Instance.new("TextButton")
+ui.closeBtn.Size = UDim2.new(0, 24, 0, 24)
+ui.closeBtn.Position = UDim2.new(1, -32, 0.5, -12)
+ui.closeBtn.BackgroundColor3 = Theme.Close
+ui.closeBtn.Text = "X"
+ui.closeBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+ui.closeBtn.TextSize = 13
+ui.closeBtn.Font = Enum.Font.GothamBold
+ui.closeBtn.BorderSizePixel = 0
+ui.closeBtn.AutoButtonColor = false
+ui.closeBtn.ZIndex = 4
+ui.closeBtn.Parent = ui.header
 
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
-closeCorner.Parent = closeBtn
+ui.closeCorner = Instance.new("UICorner")
+ui.closeCorner.CornerRadius = UDim.new(0, 6)
+ui.closeCorner.Parent = ui.closeBtn
 
--- ==== Content ====
-local content = Instance.new("Frame")
-content.Name = "Content"
-content.Size = UDim2.new(1, -20, 1, -56)
-content.Position = UDim2.new(0, 10, 0, 46)
-content.BackgroundTransparency = 1
-content.BorderSizePixel = 0
-content.ZIndex = 2
-content.Parent = expandedView
+ui.content = Instance.new("Frame")
+ui.content.Name = "Content"
+ui.content.Size = UDim2.new(1, -20, 1, -56)
+ui.content.Position = UDim2.new(0, 10, 0, 46)
+ui.content.BackgroundTransparency = 1
+ui.content.ClipsDescendants = true
+ui.content.BorderSizePixel = 0
+ui.content.ZIndex = 2
+ui.content.Parent = ui.expandedView
 
-local contentCorner = Instance.new("UICorner")
-contentCorner.CornerRadius = UDim.new(0, 8)
-contentCorner.Parent = content
+ui.contentCorner = Instance.new("UICorner")
+ui.contentCorner.CornerRadius = UDim.new(0, 8)
+ui.contentCorner.Parent = ui.content
 
 -- ============================================================
---  TAB SYSTEM
+--  GAME PAGE OVERLAY
 -- ============================================================
-local sidebar = Instance.new("Frame")
-sidebar.Name = "Sidebar"
-sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
-sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-sidebar.BackgroundTransparency = 1
-sidebar.BorderSizePixel = 0
-sidebar.ZIndex = 2
-sidebar.Parent = content
+local gamePageOverlay = Instance.new("Frame")
+gamePageOverlay.Name = "GamePage"
+gamePageOverlay.Size = UDim2.new(1, 0, 1, 0)
+gamePageOverlay.BackgroundColor3 = Theme.PanelTop
+gamePageOverlay.BackgroundTransparency = 0
+gamePageOverlay.BorderSizePixel = 0
+gamePageOverlay.ClipsDescendants = true
+gamePageOverlay.Visible = false
+gamePageOverlay.ZIndex = 50
+gamePageOverlay.Parent = ui.content
 
-local sidebarCorner = Instance.new("UICorner")
-sidebarCorner.CornerRadius = UDim.new(0, 8)
-sidebarCorner.Parent = sidebar
+local gamePageCorner = Instance.new("UICorner")
+gamePageCorner.CornerRadius = UDim.new(0, 8)
+gamePageCorner.Parent = gamePageOverlay
 
-local pageHolder = Instance.new("Frame")
-pageHolder.Name = "PageHolder"
-pageHolder.Size = UDim2.new(1, -SIDEBAR_W - 10, 1, 0)
-pageHolder.Position = UDim2.new(0, SIDEBAR_W + 10, 0, 0)
-pageHolder.BackgroundTransparency = 1
-pageHolder.Parent = content
+local gamePageGradient = Instance.new("UIGradient")
+gamePageGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Theme.PanelTop),
+    ColorSequenceKeypoint.new(1, Theme.PanelBottom),
+})
+gamePageGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0.4),
+    NumberSequenceKeypoint.new(1, 0.75)
+})
+gamePageGradient.Rotation = 135
+gamePageGradient.Parent = gamePageOverlay
 
-local accentBar = Instance.new("Frame")
-accentBar.Name = "AccentBar"
-accentBar.Size = UDim2.new(0, 3, 0, 22)
-accentBar.Position = UDim2.new(0, 5, 0, 0)
-accentBar.AnchorPoint = Vector2.new(0, 0.5)
-accentBar.BackgroundColor3 = Theme.Accent
-accentBar.BackgroundTransparency = 1
-accentBar.BorderSizePixel = 0
-accentBar.ZIndex = 5
-accentBar.Parent = sidebar
+local gamePageBack = Instance.new("TextButton")
+gamePageBack.Name = "BackButton"
+gamePageBack.Size = UDim2.new(0, 70, 0, 28)
+gamePageBack.Position = UDim2.new(0, 0, 0, 0)
+gamePageBack.BackgroundColor3 = Theme.Accent
+gamePageBack.BackgroundTransparency = 0.3
+gamePageBack.Text = "← Back"
+gamePageBack.TextColor3 = Color3.fromRGB(255, 255, 255)
+gamePageBack.TextSize = 13
+gamePageBack.Font = Enum.Font.GothamBold
+gamePageBack.BorderSizePixel = 0
+gamePageBack.AutoButtonColor = false
+gamePageBack.ZIndex = 51
+gamePageBack.Parent = gamePageOverlay
 
-local accentBarCorner = Instance.new("UICorner")
-accentBarCorner.CornerRadius = UDim.new(1, 0)
-accentBarCorner.Parent = accentBar
+local gamePageBackCorner = Instance.new("UICorner")
+gamePageBackCorner.CornerRadius = UDim.new(0, 6)
+gamePageBackCorner.Parent = gamePageBack
+
+local gamePageBackStroke = Instance.new("UIStroke")
+gamePageBackStroke.Color = Theme.AccentSoft
+gamePageBackStroke.Thickness = 1
+gamePageBackStroke.Transparency = 0.4
+gamePageBackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+gamePageBackStroke.Parent = gamePageBack
+
+local gamePageTitle = Instance.new("TextLabel")
+gamePageTitle.Name = "GameTitle"
+gamePageTitle.Size = UDim2.new(1, -80, 0, 28)
+gamePageTitle.Position = UDim2.new(0, 80, 0, 0)
+gamePageTitle.BackgroundTransparency = 1
+gamePageTitle.Text = ""
+gamePageTitle.TextColor3 = Theme.Text
+gamePageTitle.TextSize = 16
+gamePageTitle.Font = Enum.Font.GothamBold
+gamePageTitle.TextXAlignment = Enum.TextXAlignment.Left
+gamePageTitle.TextTruncate = Enum.TextTruncate.AtEnd
+gamePageTitle.ZIndex = 51
+gamePageTitle.Parent = gamePageOverlay
+
+local gamePageContent = Instance.new("ScrollingFrame")
+gamePageContent.Name = "GameContent"
+gamePageContent.Size = UDim2.new(1, 0, 1, -38)
+gamePageContent.Position = UDim2.new(0, 0, 0, 38)
+gamePageContent.BackgroundTransparency = 1
+gamePageContent.BorderSizePixel = 0
+gamePageContent.ScrollBarThickness = 4
+gamePageContent.ScrollBarImageColor3 = Theme.Accent
+gamePageContent.ScrollBarImageTransparency = 0.5
+gamePageContent.CanvasSize = UDim2.new(0, 0, 0, 0)
+gamePageContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+gamePageContent.ZIndex = 51
+gamePageContent.Parent = gamePageOverlay
+
+local gamePageContentLayout = Instance.new("UIListLayout")
+gamePageContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+gamePageContentLayout.Padding = UDim.new(0, 8)
+gamePageContentLayout.Parent = gamePageContent
+
+local gamePagePlaceholder = Instance.new("TextLabel")
+gamePagePlaceholder.Name = "Placeholder"
+gamePagePlaceholder.Size = UDim2.new(1, 0, 0, 22)
+gamePagePlaceholder.BackgroundTransparency = 1
+gamePagePlaceholder.Text = "No scripts available yet."
+gamePagePlaceholder.TextColor3 = Theme.TextDim
+gamePagePlaceholder.TextSize = 12
+gamePagePlaceholder.Font = Enum.Font.Gotham
+gamePagePlaceholder.TextXAlignment = Enum.TextXAlignment.Left
+gamePagePlaceholder.LayoutOrder = 1
+gamePagePlaceholder.ZIndex = 51
+gamePagePlaceholder.Parent = gamePageContent
+
+gamePageBack.MouseEnter:Connect(function()
+    TweenService:Create(gamePageBackStroke, TweenInfo.new(0.15), { Transparency = 0 }):Play()
+end)
+gamePageBack.MouseLeave:Connect(function()
+    TweenService:Create(gamePageBackStroke, TweenInfo.new(0.15), { Transparency = 0.4 }):Play()
+end)
+gamePageBack.MouseButton1Click:Connect(function()
+    gamePageOverlay.Visible = false
+    ui.sidebar.Visible = true
+    ui.pageHolder.Visible = true
+end)
+
+local function openGamePage(gameName)
+    gamePageTitle.Text = gameName or "Game"
+    ui.sidebar.Visible = false
+    ui.pageHolder.Visible = false
+    gamePageOverlay.Visible = true
+end
+
+-- ============================================================
+--  SIDEBAR + TAB SYSTEM
+-- ============================================================
+ui.sidebar = Instance.new("Frame")
+ui.sidebar.Name = "Sidebar"
+ui.sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
+ui.sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ui.sidebar.BackgroundTransparency = 1
+ui.sidebar.BorderSizePixel = 0
+ui.sidebar.ZIndex = 2
+ui.sidebar.Parent = ui.content
+
+ui.sidebarCorner = Instance.new("UICorner")
+ui.sidebarCorner.CornerRadius = UDim.new(0, 8)
+ui.sidebarCorner.Parent = ui.sidebar
+
+ui.pageHolder = Instance.new("Frame")
+ui.pageHolder.Name = "PageHolder"
+ui.pageHolder.Size = UDim2.new(1, -SIDEBAR_W - 10, 1, 0)
+ui.pageHolder.Position = UDim2.new(0, SIDEBAR_W + 10, 0, 0)
+ui.pageHolder.BackgroundTransparency = 1
+ui.pageHolder.Parent = ui.content
+
+ui.accentBar = Instance.new("Frame")
+ui.accentBar.Name = "AccentBar"
+ui.accentBar.Size = UDim2.new(0, 3, 0, 22)
+ui.accentBar.Position = UDim2.new(0, 5, 0, 0)
+ui.accentBar.AnchorPoint = Vector2.new(0, 0.5)
+ui.accentBar.BackgroundColor3 = Theme.Accent
+ui.accentBar.BackgroundTransparency = 1
+ui.accentBar.BorderSizePixel = 0
+ui.accentBar.ZIndex = 5
+ui.accentBar.Parent = ui.sidebar
+
+ui.accentBarCorner = Instance.new("UICorner")
+ui.accentBarCorner.CornerRadius = UDim.new(1, 0)
+ui.accentBarCorner.Parent = ui.accentBar
 
 local tabs = {}
 local tabOrder = {}
 local activeTab = nil
 
 local function selectTab(name)
+    if gamePageOverlay then
+        gamePageOverlay.Visible = false
+        ui.sidebar.Visible = true
+        ui.pageHolder.Visible = true
+    end
+
     if not tabs[name] or activeTab == name then return end
     local previous = activeTab
     activeTab = name
@@ -734,10 +863,10 @@ local function selectTab(name)
     end
     local targetPosition = UDim2.new(0, 5, 0, tabs[name].centerY)
     if previous == nil then
-        accentBar.Position = targetPosition
-        TweenService:Create(accentBar, TweenInfo.new(0.25), { BackgroundTransparency = 0 }):Play()
+        ui.accentBar.Position = targetPosition
+        TweenService:Create(ui.accentBar, TweenInfo.new(0.25), { BackgroundTransparency = 0 }):Play()
     else
-        TweenService:Create(accentBar, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = targetPosition }):Play()
+        TweenService:Create(ui.accentBar, TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Position = targetPosition }):Play()
     end
 end
 
@@ -754,9 +883,10 @@ local function createTab(name, opts)
     page.ScrollBarThickness = 4
     page.ScrollBarImageColor3 = Theme.Accent
     page.ScrollBarImageTransparency = 0.5
-    page.CanvasSize = UDim2.new(0, 0, 0, 500)
+    page.CanvasSize = UDim2.new(0, 0, 0, 0)
+    page.AutomaticCanvasSize = Enum.AutomaticSize.Y
     page.Visible = false
-    page.Parent = pageHolder
+    page.Parent = ui.pageHolder
 
     local pageTitle = Instance.new("TextLabel")
     pageTitle.Name = "Title"
@@ -794,7 +924,7 @@ local function createTab(name, opts)
     btn.AutoButtonColor = false
     btn.BorderSizePixel = 0
     btn.ZIndex = 3
-    btn.Parent = sidebar
+    btn.Parent = ui.sidebar
 
     local btnCorner = Instance.new("UICorner")
     btnCorner.CornerRadius = UDim.new(0, 6)
@@ -836,13 +966,85 @@ local function createTab(name, opts)
     return page
 end
 
-local mainPage     = createTab("Main",     { hint = false })
+local gamesPage    = createTab("Games",    { hint = false })
 local commandsPage = createTab("Commands", { hint = false })
 local themesPage   = createTab("Themes",   { hint = false })
-local visualsPage  = createTab("Visuals",  { hint = true })
-local utilityPage  = createTab("Utility",  { hint = true })
-local extrasPage   = createTab("Extras",   { hint = true })
 local settingsPage = createTab("Settings", { hint = false })
+
+-- ============================================================
+--  GAMES TAB CONTENT
+-- ============================================================
+local gamesGrid = Instance.new("Frame")
+gamesGrid.Name = "GamesGrid"
+gamesGrid.Size = UDim2.new(1, 0, 0, 0)
+gamesGrid.Position = UDim2.new(0, 0, 0, 30)
+gamesGrid.BackgroundTransparency = 1
+gamesGrid.AutomaticSize = Enum.AutomaticSize.Y
+gamesGrid.Parent = gamesPage
+
+local gamesGridLayout = Instance.new("UIListLayout")
+gamesGridLayout.FillDirection = Enum.FillDirection.Vertical
+gamesGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+gamesGridLayout.Padding = UDim.new(0, 10)
+gamesGridLayout.Parent = gamesGrid
+
+local gamesGridPadding = Instance.new("UIPadding")
+gamesGridPadding.PaddingLeft = UDim.new(0, 2)
+gamesGridPadding.PaddingRight = UDim.new(0, 2)
+gamesGridPadding.Parent = gamesGrid
+
+local gameTiles = {}
+for i, gameInfo in ipairs(SUPPORTED_GAMES) do
+    local tile = Instance.new("TextButton")
+    tile.Name = gameInfo.name:gsub("%s+", "") .. "Tile"
+    tile.Size = UDim2.new(1, 0, 0, TAB_H)
+    tile.BackgroundColor3 = Theme.Content
+    tile.BackgroundTransparency = 0.35
+    tile.Text = ""
+    tile.AutoButtonColor = false
+    tile.BorderSizePixel = 0
+    tile.LayoutOrder = i
+    tile.Parent = gamesGrid
+
+    local tileCorner = Instance.new("UICorner")
+    tileCorner.CornerRadius = UDim.new(0, 10)
+    tileCorner.Parent = tile
+
+    local tileStroke = Instance.new("UIStroke")
+    tileStroke.Color = Theme.Accent
+    tileStroke.Thickness = 2
+    tileStroke.Transparency = 0.7
+    tileStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    tileStroke.Parent = tile
+
+    local tileLabel = Instance.new("TextLabel")
+    tileLabel.Name = "Label"
+    tileLabel.Size = UDim2.new(1, -28, 1, 0)
+    tileLabel.Position = UDim2.new(0, 14, 0, 0)
+    tileLabel.BackgroundTransparency = 1
+    tileLabel.Text = gameInfo.name
+    tileLabel.TextColor3 = Color3.fromRGB(235, 235, 245)
+    tileLabel.TextSize = 13
+    tileLabel.Font = Enum.Font.GothamBold
+    tileLabel.TextXAlignment = Enum.TextXAlignment.Left
+    tileLabel.TextYAlignment = Enum.TextYAlignment.Center
+    tileLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    tileLabel.Parent = tile
+
+    gameTiles[gameInfo.name] = { tile = tile, stroke = tileStroke, label = tileLabel }
+
+    tile.MouseEnter:Connect(function()
+        TweenService:Create(tileStroke, TweenInfo.new(0.15), { Transparency = 0.2 }):Play()
+        TweenService:Create(tile, TweenInfo.new(0.15), { BackgroundTransparency = 0.15 }):Play()
+    end)
+    tile.MouseLeave:Connect(function()
+        TweenService:Create(tileStroke, TweenInfo.new(0.15), { Transparency = 0.7 }):Play()
+        TweenService:Create(tile, TweenInfo.new(0.15), { BackgroundTransparency = 0.35 }):Play()
+    end)
+    tile.MouseButton1Click:Connect(function()
+        openGamePage(gameInfo.name)
+    end)
+end
 
 -- ============================================================
 --  TOGGLES
@@ -967,9 +1169,23 @@ local commandsEnabled = true
 local inspectEnabled  = false
 local commandDefs = {}
 local commandAliases = {}
+local commandAliasList = {}
 
-local function registerCommand(canonical, handler)
+local commandArgHints = {
+    speed       = "<number>",
+    jumppower   = "<number>",
+    fov         = "<number>",
+}
+
+local function registerCommand(canonical, handler, aliases)
     commandAliases[canonical:lower()] = canonical
+    if aliases then
+        commandAliasList[canonical] = {}
+        for _, a in ipairs(aliases) do
+            commandAliases[a:lower()] = canonical
+            table.insert(commandAliasList[canonical], a)
+        end
+    end
     commandDefs[canonical] = handler
 end
 
@@ -1063,63 +1279,82 @@ end
 -- ============================================================
 --  ESP / TRACERS
 -- ============================================================
-local espEnabled = false
-local tracersEnabled = false
-local espInstances = {}
-local tracerInstances = {}
-local ESP_COLOR = Color3.fromRGB(255, 60, 60)
-local TRACER_COLOR = Color3.fromRGB(255, 60, 60)
+local espState = {
+    enabled = false,
+    tracers = false,
+    instances = {},
+    tracerInstances = {},
+    folder = Instance.new("Folder"),
+    hasDrawingAPI = false,
+}
+espState.folder.Name = "SilentSkyESP"
+espState.folder.Parent = workspace
 
-local espFolder = Instance.new("Folder")
-espFolder.Name = "SilentSkyESP"
-espFolder.Parent = workspace
-
-local hasDrawingAPI = false
 pcall(function()
     if Drawing and Drawing.new then
         local test = Drawing.new("Line")
         test:Remove()
-        hasDrawingAPI = true
+        espState.hasDrawingAPI = true
     end
 end)
 
+local function getESPColor()
+    local a = Theme.Accent
+    if luminance(a) < 0.25 then
+        return offsetRGB(a, 150, 150, 150)
+    end
+    return a
+end
+
+local function refreshESPColors()
+    local color = getESPColor()
+    for _, highlight in pairs(espState.instances) do
+        highlight.FillColor = color
+        highlight.OutlineColor = color
+    end
+    for _, line in pairs(espState.tracerInstances) do
+        line.Color = color
+    end
+end
+
 local function createESP(plr)
-    if plr == player or espInstances[plr] then return end
+    if plr == player or espState.instances[plr] then return end
     local char = plr.Character
     if not char then return end
+    local color = getESPColor()
     local highlight = Instance.new("Highlight")
     highlight.Name = "ESP_" .. plr.Name
     highlight.Adornee = char
-    highlight.FillColor = ESP_COLOR
+    highlight.FillColor = color
     highlight.FillTransparency = 0.5
-    highlight.OutlineColor = ESP_COLOR
+    highlight.OutlineColor = color
     highlight.OutlineTransparency = 0
     highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    highlight.Parent = espFolder
-    espInstances[plr] = highlight
+    highlight.Parent = espState.folder
+    espState.instances[plr] = highlight
 end
 
 local function removeESP(plr)
-    if espInstances[plr] then
-        pcall(function() espInstances[plr]:Destroy() end)
-        espInstances[plr] = nil
+    if espState.instances[plr] then
+        pcall(function() espState.instances[plr]:Destroy() end)
+        espState.instances[plr] = nil
     end
 end
 
 local function createTracer(plr)
-    if plr == player or tracerInstances[plr] or not hasDrawingAPI then return end
+    if plr == player or espState.tracerInstances[plr] or not espState.hasDrawingAPI then return end
     local line = Drawing.new("Line")
     line.Thickness = 1.5
-    line.Color = TRACER_COLOR
+    line.Color = getESPColor()
     line.Transparency = 1
     line.Visible = false
-    tracerInstances[plr] = line
+    espState.tracerInstances[plr] = line
 end
 
 local function removeTracer(plr)
-    if tracerInstances[plr] then
-        pcall(function() tracerInstances[plr]:Remove() end)
-        tracerInstances[plr] = nil
+    if espState.tracerInstances[plr] then
+        pcall(function() espState.tracerInstances[plr]:Remove() end)
+        espState.tracerInstances[plr] = nil
     end
 end
 
@@ -1139,8 +1374,8 @@ local function hookPlayer(p)
     if p == player then return end
     p.CharacterAdded:Connect(function()
         task.wait(0.3)
-        if espEnabled then createESP(p) end
-        if tracersEnabled then createTracer(p) end
+        if espState.enabled then createESP(p) end
+        if espState.tracers then createTracer(p) end
     end)
 end
 
@@ -1152,11 +1387,11 @@ Players.PlayerAdded:Connect(function(p) if p ~= player then hookPlayer(p) end en
 Players.PlayerRemoving:Connect(function(p) removeESP(p); removeTracer(p) end)
 
 RunService.RenderStepped:Connect(function()
-    if not hasDrawingAPI or next(tracerInstances) == nil then return end
+    if not espState.hasDrawingAPI or next(espState.tracerInstances) == nil then return end
     local camera = workspace.CurrentCamera
     if not camera then return end
     local origin = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-    for plr, line in pairs(tracerInstances) do
+    for plr, line in pairs(espState.tracerInstances) do
         local char = plr.Character
         if not char then
             line.Visible = false
@@ -1181,9 +1416,9 @@ end)
 
 registerCommand("esp", function(args)
     if #args == 0 then
-        espEnabled = not espEnabled
-        if espEnabled then refreshAllESP(); return true, "ESP enabled" else
-            for plr in pairs(espInstances) do removeESP(plr) end
+        espState.enabled = not espState.enabled
+        if espState.enabled then refreshAllESP(); return true, "ESP enabled" else
+            for plr in pairs(espState.instances) do removeESP(plr) end
             return true, "ESP disabled"
         end
     end
@@ -1191,7 +1426,7 @@ registerCommand("esp", function(args)
     if #targets == 0 then return false, "No players matched" end
     for _, p in ipairs(targets) do
         if p ~= player then
-            if espInstances[p] then removeESP(p) else createESP(p) end
+            if espState.instances[p] then removeESP(p) else createESP(p) end
         end
     end
     return true, ("ESP toggled for %d"):format(#targets)
@@ -1199,8 +1434,8 @@ end)
 
 registerCommand("unesp", function(args)
     if #args == 0 then
-        espEnabled = false
-        for plr in pairs(espInstances) do removeESP(plr) end
+        espState.enabled = false
+        for plr in pairs(espState.instances) do removeESP(plr) end
         return true, "ESP disabled"
     end
     local targets = resolvePlayers(table.concat(args, " "))
@@ -1209,34 +1444,375 @@ registerCommand("unesp", function(args)
 end)
 
 registerCommand("trace", function(args)
-    if not hasDrawingAPI then return false, "Drawing API not available" end
+    if not espState.hasDrawingAPI then return false, "Drawing API not available" end
     if #args == 0 then
-        tracersEnabled = not tracersEnabled
-        if tracersEnabled then refreshAllTracers(); return true, "Tracers enabled" else
-            for plr in pairs(tracerInstances) do removeTracer(plr) end
+        espState.tracers = not espState.tracers
+        if espState.tracers then refreshAllTracers(); return true, "Tracers enabled" else
+            for plr in pairs(espState.tracerInstances) do removeTracer(plr) end
             return true, "Tracers disabled"
         end
     end
     local targets = resolvePlayers(table.concat(args, " "))
     for _, p in ipairs(targets) do
         if p ~= player then
-            if tracerInstances[p] then removeTracer(p) else createTracer(p) end
+            if espState.tracerInstances[p] then removeTracer(p) else createTracer(p) end
         end
     end
     return true, ("Tracers toggled for %d"):format(#targets)
 end)
 
 registerCommand("untrace", function(args)
-    if not hasDrawingAPI then return false, "Drawing API not available" end
+    if not espState.hasDrawingAPI then return false, "Drawing API not available" end
     if #args == 0 then
-        tracersEnabled = false
-        for plr in pairs(tracerInstances) do removeTracer(plr) end
+        espState.tracers = false
+        for plr in pairs(espState.tracerInstances) do removeTracer(plr) end
         return true, "Tracers disabled"
     end
     local targets = resolvePlayers(table.concat(args, " "))
     for _, p in ipairs(targets) do removeTracer(p) end
     return true, ("Tracers removed for %d"):format(#targets)
 end)
+
+-- ============================================================
+--  MOVEMENT & CHARACTER STATE
+-- ============================================================
+local cmdState = {
+    noclipEnabled = false,
+    invisEnabled = false,
+    followTarget = nil,
+    noclipConn = nil,
+    invisConn = nil,
+    followConn = nil,
+    fullbrightEnabled = false,
+    lightingBackup = nil,
+}
+
+local function createFlyController()
+    local state = {
+        enabled = false,
+        bv = nil,
+        bg = nil,
+        conn = nil,
+    }
+    local function setOn(on)
+        state.enabled = on and true or false
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if state.conn then state.conn:Disconnect(); state.conn = nil end
+        if state.bv then state.bv:Destroy(); state.bv = nil end
+        if state.bg then state.bg:Destroy(); state.bg = nil end
+        if not state.enabled or not hrp then return end
+        state.bv = Instance.new("BodyVelocity")
+        state.bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+        state.bv.Velocity = Vector3.zero
+        state.bv.Parent = hrp
+        state.bg = Instance.new("BodyGyro")
+        state.bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+        state.bg.P = 10000
+        state.bg.D = 500
+        state.bg.CFrame = hrp.CFrame
+        state.bg.Parent = hrp
+        local speed = 60
+        state.conn = RunService.RenderStepped:Connect(function()
+            if not state.enabled then return end
+            local c = player.Character
+            local h = c and c:FindFirstChild("HumanoidRootPart")
+            if not h or not state.bv or not state.bg then return end
+            local cam = workspace.CurrentCamera
+            local look  = cam.CFrame.LookVector
+            local right = cam.CFrame.RightVector
+            local up    = Vector3.new(0, 1, 0)
+            local dir = Vector3.zero
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir = dir + look end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir = dir - look end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir = dir - right end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir = dir + right end
+            if UserInputService:IsKeyDown(Enum.KeyCode.E)
+                or UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                dir = dir + up
+            end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Q)
+                or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                dir = dir - up
+            end
+            if dir.Magnitude > 0 then dir = dir.Unit * speed end
+            state.bv.Velocity = dir
+            state.bg.CFrame = cam.CFrame
+        end)
+    end
+    return state, setOn
+end
+
+local flyState, setFly             = createFlyController()
+local toggleFlyState, setToggleFly = createFlyController()
+
+local function setNoclip(on)
+    cmdState.noclipEnabled = on and true or false
+    if cmdState.noclipConn then cmdState.noclipConn:Disconnect(); cmdState.noclipConn = nil end
+    if not cmdState.noclipEnabled then return end
+    cmdState.noclipConn = RunService.Stepped:Connect(function()
+        if not cmdState.noclipEnabled then return end
+        local c = player.Character
+        if not c then return end
+        for _, d in ipairs(c:GetDescendants()) do
+            if d:IsA("BasePart") then d.CanCollide = false end
+        end
+    end)
+end
+
+local function applyInvis(char)
+    if not char or not cmdState.invisEnabled then return end
+    for _, d in ipairs(char:GetDescendants()) do
+        if d:IsA("BasePart") then d.Transparency = 1
+        elseif d:IsA("Decal") then d.Transparency = 1 end
+    end
+end
+local function setInvis(on)
+    cmdState.invisEnabled = on and true or false
+    if cmdState.invisConn then cmdState.invisConn:Disconnect(); cmdState.invisConn = nil end
+    local char = player.Character
+    if cmdState.invisEnabled then
+        applyInvis(char)
+        if char then cmdState.invisConn = char.DescendantAdded:Connect(applyInvis) end
+    elseif char then
+        for _, d in ipairs(char:GetDescendants()) do
+            if d:IsA("BasePart") then d.Transparency = 0
+            elseif d:IsA("Decal") then d.Transparency = 0 end
+        end
+    end
+end
+
+local function setFollow(target)
+    cmdState.followTarget = target
+    if cmdState.followConn then cmdState.followConn:Disconnect(); cmdState.followConn = nil end
+    if not target then return end
+    cmdState.followConn = RunService.RenderStepped:Connect(function()
+        if not cmdState.followTarget then return end
+        local myChar = player.Character
+        local myHrp  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+        local tChar  = cmdState.followTarget.Character
+        local tHrp   = tChar and tChar:FindFirstChild("HumanoidRootPart")
+        if not myHrp or not tHrp then return end
+        local dist = (myHrp.Position - tHrp.Position).Magnitude
+        if dist > 8 then
+            myHrp.CFrame = CFrame.new(tHrp.Position) * CFrame.new(0, 3, -4)
+        end
+    end)
+end
+
+-- ============================================================
+--  MOVEMENT / CHARACTER COMMANDS
+-- ============================================================
+registerCommand("goto", function(args)
+    if #args == 0 then return false, "Usage: goto <player>" end
+    local targets = resolvePlayers(table.concat(args, " "))
+    if #targets == 0 then return false, "No players matched" end
+    local target = targets[1]
+    local myChar = player.Character
+    local myHrp  = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    local tChar  = target.Character
+    local tHrp   = tChar and tChar:FindFirstChild("HumanoidRootPart")
+    if not myHrp or not tHrp then return false, "Missing character" end
+    myHrp.CFrame = CFrame.new(tHrp.Position) * CFrame.new(0, 3, 3)
+    return true, "Teleported to " .. target.Name
+end, { "tp", "gt" })
+
+registerCommand("follow", function(args)
+    if #args == 0 then
+        if cmdState.followTarget then return true, "Already following " .. cmdState.followTarget.Name end
+        return false, "Usage: follow <player>"
+    end
+    local targets = resolvePlayers(table.concat(args, " "))
+    if #targets == 0 then return false, "No players matched" end
+    setFollow(targets[1])
+    return true, "Following " .. targets[1].Name
+end)
+
+registerCommand("unfollow", function()
+    setFollow(nil)
+    return true, "Stopped following"
+end)
+
+registerCommand("speed", function(args)
+    local n = tonumber(args[1])
+    if not n then return false, "Usage: speed <number>" end
+    local char = player.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false, "No humanoid" end
+    hum.WalkSpeed = math.clamp(n, 0, 1000)
+    return true, ("WalkSpeed = %d"):format(math.floor(hum.WalkSpeed))
+end, { "ws", "walkspeed" })
+
+registerCommand("speedreset", function()
+    local char = player.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false, "No humanoid" end
+    hum.WalkSpeed = 16
+    return true, "WalkSpeed reset to 16"
+end, { "wsr", "wsreset", "walkspeedreset" })
+
+registerCommand("jumppower", function(args)
+    local n = tonumber(args[1])
+    if not n then return false, "Usage: jumppower <number>" end
+    local char = player.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false, "No humanoid" end
+    hum.UseJumpPower = true
+    hum.JumpPower = math.clamp(n, 0, 1000)
+    return true, ("JumpPower = %d"):format(math.floor(hum.JumpPower))
+end, { "jp" })
+
+registerCommand("jumppowerreset", function()
+    local char = player.Character
+    local hum  = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false, "No humanoid" end
+    hum.UseJumpPower = true
+    hum.JumpPower = 50
+    return true, "JumpPower reset to 50"
+end, { "jpr", "jumppowerr" })
+
+registerCommand("fly", function()
+    setFly(not flyState.enabled)
+    return true, flyState.enabled and "Fly enabled" or "Fly disabled"
+end)
+
+registerCommand("unfly", function()
+    local wasFly       = flyState.enabled
+    local wasToggleFly = toggleFlyState.enabled
+    setFly(false)
+    setToggleFly(false)
+    if wasFly and wasToggleFly then
+        return true, "Fly and ToggleFly disabled"
+    elseif wasToggleFly then
+        return true, "ToggleFly disabled"
+    elseif wasFly then
+        return true, "Fly disabled"
+    else
+        return true, "Fly already disabled"
+    end
+end)
+
+registerCommand("togglefly", function()
+    setToggleFly(not toggleFlyState.enabled)
+    return true, toggleFlyState.enabled and "ToggleFly enabled" or "ToggleFly disabled"
+end, { "tfly" })
+
+registerCommand("noclip", function()
+    setNoclip(not cmdState.noclipEnabled)
+    return true, cmdState.noclipEnabled and "Noclip enabled" or "Noclip disabled"
+end, { "nc", "ncp" })
+
+registerCommand("clip", function()
+    setNoclip(false)
+    return true, "Collision restored"
+end, { "clp" })
+
+registerCommand("invis", function()
+    setInvis(not cmdState.invisEnabled)
+    return true, cmdState.invisEnabled and "Invisible" or "Visible"
+end, { "inv" })
+
+registerCommand("uninvis", function()
+    setInvis(false)
+    return true, "Visible"
+end, { "univ", "visible", "vis" })
+
+registerCommand("fov", function(args)
+    local n = tonumber(args[1])
+    if not n then return false, "Usage: fov <number>" end
+    local cam = workspace.CurrentCamera
+    if not cam then return false, "No camera" end
+    cam.FieldOfView = math.clamp(n, 1, 120)
+    return true, ("FOV = %d"):format(cam.FieldOfView)
+end)
+
+registerCommand("fovreset", function()
+    local cam = workspace.CurrentCamera
+    if not cam then return false, "No camera" end
+    cam.FieldOfView = 70
+    return true, "FOV reset to 70"
+end, { "fovr" })
+
+registerCommand("fullbright", function()
+    if not cmdState.fullbrightEnabled then
+        cmdState.lightingBackup = {
+            Brightness      = Lighting.Brightness,
+            ClockTime       = Lighting.ClockTime,
+            FogEnd          = Lighting.FogEnd,
+            GlobalShadows   = Lighting.GlobalShadows,
+            Ambient         = Lighting.Ambient,
+            OutdoorAmbient  = Lighting.OutdoorAmbient,
+        }
+        Lighting.Brightness     = 3
+        Lighting.ClockTime      = 14
+        Lighting.FogEnd         = 100000
+        Lighting.GlobalShadows  = false
+        Lighting.Ambient        = Color3.fromRGB(178, 178, 178)
+        Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178)
+        cmdState.fullbrightEnabled = true
+        return true, "Fullbright enabled"
+    else
+        if cmdState.lightingBackup then
+            for k, v in pairs(cmdState.lightingBackup) do
+                pcall(function() Lighting[k] = v end)
+            end
+        end
+        cmdState.fullbrightEnabled = false
+        return true, "Fullbright disabled"
+    end
+end, { "fb", "bright" })
+
+registerCommand("unfullbright", function()
+    if cmdState.fullbrightEnabled and cmdState.lightingBackup then
+        for k, v in pairs(cmdState.lightingBackup) do
+            pcall(function() Lighting[k] = v end)
+        end
+        cmdState.fullbrightEnabled = false
+    end
+    return true, "Fullbright disabled"
+end, { "ufb", "unbright" })
+
+registerCommand("reset", function()
+    local char = player.Character
+    if not char then return false, "No character" end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false, "No humanoid" end
+    hum.Health = 0
+    return true, "Resetting..."
+end, { "rs", "rst" })
+
+registerCommand("rejoin", function()
+    if not game.JobId or game.JobId == "" then return false, "Not in a multiplayer server" end
+    task.spawn(function()
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
+        end)
+    end)
+    return true, "Rejoining..."
+end, { "rj" })
+
+registerCommand("serverhop", function()
+    task.spawn(function()
+        if not httpRequest then return end
+        local url = "https://games.roproxy.com/v1/games/" .. tostring(game.PlaceId) .. "/servers/Public?limit=100"
+        local ok, resp = pcall(function() return httpRequest({ Url = url, Method = "GET" }) end)
+        if not ok or type(resp) ~= "table" then return end
+        local ok2, decoded = pcall(function() return HttpService:JSONDecode(resp.Body) end)
+        if not ok2 or not decoded then return end
+        local candidates = {}
+        for _, s in ipairs(decoded.data or {}) do
+            if s.id ~= game.JobId and (s.playing or 0) < (s.maxPlayers or 0) then
+                table.insert(candidates, s)
+            end
+        end
+        if #candidates == 0 then return end
+        local chosen = candidates[math.random(#candidates)]
+        pcall(function()
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, chosen.id, player)
+        end)
+    end)
+    return true, "Searching for a new server..."
+end, { "sh", "hop", "shop" })
 
 local function parseAndRun(input)
     if not commandsEnabled then return false, "Commands are disabled" end
@@ -1271,104 +1847,319 @@ local function parseAndRun(input)
 end
 
 -- ============================================================
---  COMMAND BARS
+--  COMMAND BAR
 -- ============================================================
-local cmdBar = Instance.new("TextBox")
-cmdBar.Name = "CommandBar"
-cmdBar.Size = UDim2.new(1, 0, 0, 32)
-cmdBar.Position = UDim2.new(0, 0, 1, -8)
-cmdBar.AnchorPoint = Vector2.new(0, 1)
-cmdBar.BackgroundTransparency = 1
-cmdBar.TextColor3 = Theme.Text
-cmdBar.PlaceholderColor3 = Theme.TextDim
-cmdBar.TextSize = 13
-cmdBar.Font = Enum.Font.Code
-cmdBar.PlaceholderText = "Enter a command"
-cmdBar.Text = ""
-cmdBar.ClearTextOnFocus = false
-cmdBar.BorderSizePixel = 0
-cmdBar.TextXAlignment = Enum.TextXAlignment.Left
-cmdBar.Visible = false
-cmdBar.ZIndex = 20
-cmdBar.Parent = pageHolder
+ui.floatBar = Instance.new("Frame")
+ui.floatBar.Name = "FloatingCommandBar"
+ui.floatBar.Size = UDim2.new(0, 340, 0, 40)
+ui.floatBar.Position = UDim2.new(1, -24, 1, -24)
+ui.floatBar.AnchorPoint = Vector2.new(1, 1)
+ui.floatBar.BackgroundColor3 = Theme.Content
+ui.floatBar.BackgroundTransparency = 0.05
+ui.floatBar.BorderSizePixel = 0
+ui.floatBar.Visible = false
+ui.floatBar.ZIndex = 100
+ui.floatBar.Parent = floatGui
 
-local cmdBarPadding = Instance.new("UIPadding")
-cmdBarPadding.PaddingLeft = UDim.new(0, 2)
-cmdBarPadding.PaddingRight = UDim.new(0, 2)
-cmdBarPadding.Parent = cmdBar
+ui.floatBarCorner = Instance.new("UICorner")
+ui.floatBarCorner.CornerRadius = UDim.new(0, 8)
+ui.floatBarCorner.Parent = ui.floatBar
 
-local floatBar = Instance.new("Frame")
-floatBar.Name = "FloatingCommandBar"
-floatBar.Size = UDim2.new(0, 340, 0, 40)
-floatBar.Position = UDim2.new(1, -24, 1, -24)
-floatBar.AnchorPoint = Vector2.new(1, 1)
-floatBar.BackgroundColor3 = Theme.Content
-floatBar.BackgroundTransparency = 0.05
-floatBar.BorderSizePixel = 0
-floatBar.Visible = false
-floatBar.ZIndex = 100
-floatBar.Parent = floatGui
-
-local floatBarCorner = Instance.new("UICorner")
-floatBarCorner.CornerRadius = UDim.new(0, 8)
-floatBarCorner.Parent = floatBar
-
-local floatBarGradient = Instance.new("UIGradient")
-floatBarGradient.Color = ColorSequence.new({
+ui.floatBarGradient = Instance.new("UIGradient")
+ui.floatBarGradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Theme.PanelTop),
     ColorSequenceKeypoint.new(1, Theme.PanelBottom),
 })
-floatBarGradient.Rotation = 135
-floatBarGradient.Parent = floatBar
+ui.floatBarGradient.Rotation = 135
+ui.floatBarGradient.Parent = ui.floatBar
 
-local floatBarStroke = Instance.new("UIStroke")
-floatBarStroke.Color = Theme.Accent
-floatBarStroke.Thickness = 1
-floatBarStroke.Transparency = 0.2
-floatBarStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-floatBarStroke.Parent = floatBar
+ui.floatBarStroke = Instance.new("UIStroke")
+ui.floatBarStroke.Color = Theme.Accent
+ui.floatBarStroke.Thickness = 1
+ui.floatBarStroke.Transparency = 0.2
+ui.floatBarStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+ui.floatBarStroke.Parent = ui.floatBar
 
-local floatPrompt = Instance.new("TextLabel")
-floatPrompt.Size = UDim2.new(0, 24, 1, 0)
-floatPrompt.Position = UDim2.new(0, 12, 0, 0)
-floatPrompt.BackgroundTransparency = 1
-floatPrompt.Text = ";"
-floatPrompt.TextColor3 = Theme.Accent
-floatPrompt.TextSize = 16
-floatPrompt.Font = Enum.Font.Code
-floatPrompt.TextXAlignment = Enum.TextXAlignment.Left
-floatPrompt.ZIndex = 101
-floatPrompt.Parent = floatBar
+ui.floatPrompt = Instance.new("TextLabel")
+ui.floatPrompt.Size = UDim2.new(0, 24, 1, 0)
+ui.floatPrompt.Position = UDim2.new(0, 12, 0, 0)
+ui.floatPrompt.BackgroundTransparency = 1
+ui.floatPrompt.Text = ";"
+ui.floatPrompt.TextColor3 = Theme.Accent
+ui.floatPrompt.TextSize = 16
+ui.floatPrompt.Font = Enum.Font.Code
+ui.floatPrompt.TextXAlignment = Enum.TextXAlignment.Left
+ui.floatPrompt.ZIndex = 101
+ui.floatPrompt.Parent = ui.floatBar
 
-local floatBox = Instance.new("TextBox")
-floatBox.Size = UDim2.new(1, -44, 1, 0)
-floatBox.Position = UDim2.new(0, 36, 0, 0)
-floatBox.BackgroundTransparency = 1
-floatBox.Text = ""
-floatBox.TextColor3 = Theme.Text
-floatBox.PlaceholderColor3 = Theme.TextDim
-floatBox.PlaceholderText = "Enter a command"
-floatBox.TextSize = 14
-floatBox.Font = Enum.Font.Code
-floatBox.ClearTextOnFocus = false
-floatBox.BorderSizePixel = 0
-floatBox.TextXAlignment = Enum.TextXAlignment.Left
-floatBox.ZIndex = 101
-floatBox.Parent = floatBar
+ui.floatBox = Instance.new("TextBox")
+ui.floatBox.Size = UDim2.new(1, -44, 1, 0)
+ui.floatBox.Position = UDim2.new(0, 36, 0, 0)
+ui.floatBox.BackgroundTransparency = 1
+ui.floatBox.Text = ""
+ui.floatBox.TextColor3 = Theme.Text
+ui.floatBox.PlaceholderColor3 = Theme.TextDim
+ui.floatBox.PlaceholderText = "Enter a command"
+ui.floatBox.TextSize = 14
+ui.floatBox.Font = Enum.Font.Code
+ui.floatBox.ClearTextOnFocus = false
+ui.floatBox.BorderSizePixel = 0
+ui.floatBox.TextXAlignment = Enum.TextXAlignment.Left
+ui.floatBox.ZIndex = 101
+ui.floatBox.Parent = ui.floatBar
 
-local semicolonWatchUntil = 0
+-- ============================================================
+--  COMMAND SUGGESTIONS
+-- ============================================================
+local MAX_SUGGESTIONS = 8
+
+ui.floatSuggest = Instance.new("Frame")
+ui.floatSuggest.Name = "CommandSuggestions"
+ui.floatSuggest.Size = UDim2.new(0, 340, 0, 0)
+ui.floatSuggest.Position = UDim2.new(1, -24, 1, -70)
+ui.floatSuggest.AnchorPoint = Vector2.new(1, 1)
+ui.floatSuggest.BackgroundColor3 = Theme.Content
+ui.floatSuggest.BackgroundTransparency = 0.05
+ui.floatSuggest.BorderSizePixel = 0
+ui.floatSuggest.Visible = false
+ui.floatSuggest.ZIndex = 99
+ui.floatSuggest.Parent = floatGui
+
+ui.floatSuggestCorner = Instance.new("UICorner")
+ui.floatSuggestCorner.CornerRadius = UDim.new(0, 8)
+ui.floatSuggestCorner.Parent = ui.floatSuggest
+
+ui.floatSuggestGradient = Instance.new("UIGradient")
+ui.floatSuggestGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Theme.PanelTop),
+    ColorSequenceKeypoint.new(1, Theme.PanelBottom),
+})
+ui.floatSuggestGradient.Rotation = 135
+ui.floatSuggestGradient.Parent = ui.floatSuggest
+
+ui.floatSuggestStroke = Instance.new("UIStroke")
+ui.floatSuggestStroke.Color = Theme.Accent
+ui.floatSuggestStroke.Thickness = 1
+ui.floatSuggestStroke.Transparency = 0.2
+ui.floatSuggestStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+ui.floatSuggestStroke.Parent = ui.floatSuggest
+
+local floatSuggestLayout = Instance.new("UIListLayout")
+floatSuggestLayout.SortOrder = Enum.SortOrder.LayoutOrder
+floatSuggestLayout.Padding = UDim.new(0, 1)
+floatSuggestLayout.Parent = ui.floatSuggest
+
+local floatSuggestPadding = Instance.new("UIPadding")
+floatSuggestPadding.PaddingTop = UDim.new(0, 5)
+floatSuggestPadding.PaddingBottom = UDim.new(0, 5)
+floatSuggestPadding.PaddingLeft = UDim.new(0, 5)
+floatSuggestPadding.PaddingRight = UDim.new(0, 5)
+floatSuggestPadding.Parent = ui.floatSuggest
+
+local suggestRows = {}
+
+local function clearSuggestions()
+    for _, row in ipairs(suggestRows) do row:Destroy() end
+    suggestRows = {}
+end
+
+local function hideSuggestions()
+    ui.floatSuggest.Visible = false
+    clearSuggestions()
+end
+
+local function pickSuggestion(canonical)
+    ui.floatBox.Text = canonical .. " "
+    ui.floatBox.CursorPosition = #ui.floatBox.Text + 1
+    ui.floatBox:CaptureFocus()
+    hideSuggestions()
+end
+
+local function color3ToHex(c)
+    return string.format("%02X%02X%02X",
+        math.floor(math.clamp(c.R, 0, 1) * 255 + 0.5),
+        math.floor(math.clamp(c.G, 0, 1) * 255 + 0.5),
+        math.floor(math.clamp(c.B, 0, 1) * 255 + 0.5))
+end
+
+local function getHighlightColor()
+    local a = Theme.Accent
+    local textLum = luminance(Theme.Text)
+    local accLum = luminance(a)
+    if math.abs(accLum - textLum) < 0.25 then
+        if textLum > 0.5 then
+            return offsetRGB(a, -120, -120, -120)
+        else
+            return offsetRGB(a, 120, 120, 120)
+        end
+    end
+    return a
+end
+
+local function updateSuggestions(text)
+    clearSuggestions()
+
+    local trimmed = text:gsub("^[;%s]+", "")
+    if trimmed == "" then
+        hideSuggestions()
+        return
+    end
+
+    if trimmed:find("%s") then
+        hideSuggestions()
+        return
+    end
+
+    local lc = trimmed:lower()
+    local matches = {}
+    local seenCanonical = {}
+
+    for canonical in pairs(commandDefs) do
+        local startIdx = canonical:lower():find(lc, 1, true)
+        if startIdx then
+            matches[#matches + 1] = {
+                name = canonical,
+                via = nil,
+                matchStart = startIdx,
+                matchLen = #lc,
+            }
+            seenCanonical[canonical] = true
+        end
+    end
+
+    for alias, canonical in pairs(commandAliases) do
+        if alias ~= canonical and not seenCanonical[canonical] then
+            if alias:lower():find(lc, 1, true) then
+                matches[#matches + 1] = {
+                    name = canonical,
+                    via = alias,
+                    matchStart = nil,
+                    matchLen = #lc,
+                }
+                seenCanonical[canonical] = true
+            end
+        end
+    end
+
+    if #matches == 0 then
+        hideSuggestions()
+        return
+    end
+
+    table.sort(matches, function(a, b)
+        local aIsName = a.via == nil
+        local bIsName = b.via == nil
+        if aIsName ~= bIsName then return aIsName end
+        if aIsName then
+            local aPrefix = (a.matchStart == 1)
+            local bPrefix = (b.matchStart == 1)
+            if aPrefix ~= bPrefix then return aPrefix end
+        end
+        return a.name < b.name
+    end)
+
+    local hlHex = color3ToHex(getHighlightColor())
+
+    local shown = 0
+    for _, m in ipairs(matches) do
+        shown = shown + 1
+        if shown > MAX_SUGGESTIONS then break end
+
+        local row = Instance.new("TextButton")
+        row.Size = UDim2.new(1, 0, 0, 26)
+        row.BackgroundColor3 = Theme.Content
+        row.BackgroundTransparency = 1
+        row.Text = ""
+        row.AutoButtonColor = false
+        row.BorderSizePixel = 0
+        row.LayoutOrder = shown
+        row.ZIndex = 100
+        row.Parent = ui.floatSuggest
+
+        local argHint = commandArgHints[m.name]
+
+        local nameLbl = Instance.new("TextLabel")
+        nameLbl.Size = UDim2.new(0, 130, 1, 0)
+        nameLbl.Position = UDim2.new(0, 8, 0, 0)
+        nameLbl.BackgroundTransparency = 1
+        nameLbl.RichText = true
+        nameLbl.TextColor3 = Theme.Text
+        nameLbl.TextSize = 13
+        nameLbl.Font = Enum.Font.Code
+        nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+        nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLbl.ZIndex = 101
+        nameLbl.Parent = row
+
+        if m.matchStart then
+            local before     = m.name:sub(1, m.matchStart - 1)
+            local matchText  = m.name:sub(m.matchStart, m.matchStart + m.matchLen - 1)
+            local after      = m.name:sub(m.matchStart + m.matchLen)
+            nameLbl.Text = before .. '<font color="#' .. hlHex .. '">' .. matchText .. '</font>' .. after
+        else
+            nameLbl.Text = m.name
+        end
+
+        local aliasStartX = 138
+        if argHint then
+            local argLbl = Instance.new("TextLabel")
+            argLbl.Size = UDim2.new(0, 62, 1, 0)
+            argLbl.Position = UDim2.new(0, 138, 0, 0)
+            argLbl.BackgroundTransparency = 1
+            argLbl.Text = argHint
+            argLbl.TextColor3 = Theme.TextDim
+            argLbl.TextSize = 11
+            argLbl.Font = Enum.Font.Code
+            argLbl.TextXAlignment = Enum.TextXAlignment.Left
+            argLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            argLbl.ZIndex = 101
+            argLbl.Parent = row
+            aliasStartX = 204
+        end
+
+        local aliasList = commandAliasList[m.name]
+        if aliasList and #aliasList > 0 then
+            local aliasLbl = Instance.new("TextLabel")
+            aliasLbl.Size = UDim2.new(1, -(aliasStartX + 8), 1, 0)
+            aliasLbl.Position = UDim2.new(0, aliasStartX, 0, 0)
+            aliasLbl.BackgroundTransparency = 1
+            aliasLbl.Text = table.concat(aliasList, ", ")
+            aliasLbl.TextColor3 = Theme.TextDim
+            aliasLbl.TextSize = 11
+            aliasLbl.Font = Enum.Font.Code
+            aliasLbl.TextXAlignment = Enum.TextXAlignment.Left
+            aliasLbl.TextTruncate = Enum.TextTruncate.AtEnd
+            aliasLbl.ZIndex = 101
+            aliasLbl.Parent = row
+        end
+
+        row.MouseEnter:Connect(function()
+            row.BackgroundTransparency = 0.85
+        end)
+        row.MouseLeave:Connect(function()
+            row.BackgroundTransparency = 1
+        end)
+        row.MouseButton1Click:Connect(function()
+            pickSuggestion(m.name)
+        end)
+
+        table.insert(suggestRows, row)
+    end
+
+    ui.floatSuggest.Size = UDim2.new(0, 340, 0, shown * 27 + 10)
+    ui.floatSuggest.Visible = true
+end
+
 local floatSemicolonWatchUntil = 0
 
-cmdBar:GetPropertyChangedSignal("Text"):Connect(function()
-    if os.clock() <= semicolonWatchUntil and cmdBar.Text:sub(1, 1) == ";" then
-        cmdBar.Text = cmdBar.Text:gsub("^;+", "")
+ui.floatBox:GetPropertyChangedSignal("Text"):Connect(function()
+    if os.clock() <= floatSemicolonWatchUntil and ui.floatBox.Text:sub(1, 1) == ";" then
+        ui.floatBox.Text = ui.floatBox.Text:gsub("^;+", "")
     end
 end)
 
-floatBox:GetPropertyChangedSignal("Text"):Connect(function()
-    if os.clock() <= floatSemicolonWatchUntil and floatBox.Text:sub(1, 1) == ";" then
-        floatBox.Text = floatBox.Text:gsub("^;+", "")
-    end
+ui.floatBox:GetPropertyChangedSignal("Text"):Connect(function()
+    updateSuggestions(ui.floatBox.Text)
 end)
 
 local commandHistory = {}
@@ -1381,26 +2172,32 @@ local function pushHistory(cmd)
 end
 
 UserInputService.InputBegan:Connect(function(input)
-    local focused = UserInputService:GetFocusedTextBox()
-    if focused ~= cmdBar and focused ~= floatBox then return end
+    if UserInputService:GetFocusedTextBox() ~= ui.floatBox then return end
     if input.KeyCode == Enum.KeyCode.Up then
         if #commandHistory == 0 then return end
         historyIndex = math.max(1, historyIndex - 1)
-        focused.Text = commandHistory[historyIndex]
-        focused.CursorPosition = #focused.Text + 1
+        ui.floatBox.Text = commandHistory[historyIndex]
+        ui.floatBox.CursorPosition = #ui.floatBox.Text + 1
     elseif input.KeyCode == Enum.KeyCode.Down then
         if #commandHistory == 0 then return end
         historyIndex = math.min(#commandHistory + 1, historyIndex + 1)
-        if historyIndex > #commandHistory then focused.Text = ""
-        else focused.Text = commandHistory[historyIndex] end
-        focused.CursorPosition = #focused.Text + 1
+        if historyIndex > #commandHistory then ui.floatBox.Text = ""
+        else ui.floatBox.Text = commandHistory[historyIndex] end
+        ui.floatBox.CursorPosition = #ui.floatBox.Text + 1
     elseif input.KeyCode == Enum.KeyCode.Tab then
-        local text = focused.Text:lower()
+        local text = ui.floatBox.Text:lower()
         if text == "" then return end
         for canonical in pairs(commandDefs) do
             if canonical:sub(1, #text) == text then
-                focused.Text = canonical
-                focused.CursorPosition = #canonical + 1
+                ui.floatBox.Text = canonical
+                ui.floatBox.CursorPosition = #canonical + 1
+                return
+            end
+        end
+        for alias, canonical in pairs(commandAliases) do
+            if alias:sub(1, #text) == text and not commandDefs[alias] then
+                ui.floatBox.Text = canonical
+                ui.floatBox.CursorPosition = #canonical + 1
                 return
             end
         end
@@ -1409,38 +2206,25 @@ end)
 
 showCommandBar = function()
     if not commandsEnabled then return end
-    if screenGui.Enabled then
-        cmdBar.Text = ""
-        cmdBar.Visible = true
-        cmdBar:CaptureFocus()
-        semicolonWatchUntil = os.clock() + 0.15
-    else
-        floatBox.Text = ""
-        floatBar.Visible = true
-        floatBox:CaptureFocus()
-        floatSemicolonWatchUntil = os.clock() + 0.15
-    end
+    ui.floatBox.Text = ""
+    ui.floatBar.Visible = true
+    ui.floatBox:CaptureFocus()
+    floatSemicolonWatchUntil = os.clock() + 0.15
 end
 
 hideCommandBar = function()
-    if cmdBar.Visible then
-        cmdBar.Visible = false
-        cmdBar.Text = ""
-        pcall(function() cmdBar:ReleaseFocus() end)
+    if ui.floatBar.Visible then
+        ui.floatBar.Visible = false
+        ui.floatBox.Text = ""
+        pcall(function() ui.floatBox:ReleaseFocus() end)
     end
-    if floatBar.Visible then
-        floatBar.Visible = false
-        floatBox.Text = ""
-        pcall(function() floatBox:ReleaseFocus() end)
-    end
-    semicolonWatchUntil = 0
+    hideSuggestions()
     floatSemicolonWatchUntil = 0
 end
 
 local function handleBarInput(input, box, bar)
     bar.Visible = false
     box.Text = ""
-    semicolonWatchUntil = 0
     floatSemicolonWatchUntil = 0
     pcall(function() box:ReleaseFocus() end)
     if input:match("%S") then
@@ -1449,33 +2233,18 @@ local function handleBarInput(input, box, bar)
     end
 end
 
-cmdBar.FocusLost:Connect(function(enterPressed)
-    if enterPressed then handleBarInput(cmdBar.Text, cmdBar, cmdBar) else hideCommandBar() end
+ui.floatBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        hideSuggestions()
+        handleBarInput(ui.floatBox.Text, ui.floatBox, ui.floatBar)
+    else
+        task.delay(0.15, function()
+            if UserInputService:GetFocusedTextBox() ~= ui.floatBox then
+                hideCommandBar()
+            end
+        end)
+    end
 end)
-
-floatBox.FocusLost:Connect(function(enterPressed)
-    if enterPressed then handleBarInput(floatBox.Text, floatBox, floatBar) else hideCommandBar() end
-end)
-
--- ============================================================
---  MAIN PAGE
--- ============================================================
-local mainContent = Instance.new("Frame")
-mainContent.Size = UDim2.new(1, 0, 0, 0)
-mainContent.Position = UDim2.new(0, 0, 0, 30)
-mainContent.BackgroundTransparency = 1
-mainContent.AutomaticSize = Enum.AutomaticSize.Y
-mainContent.Parent = mainPage
-
-local mainLayout = Instance.new("UIListLayout")
-mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
-mainLayout.Padding = UDim.new(0, 8)
-mainLayout.Parent = mainContent
-
-local mainPadding = Instance.new("UIPadding")
-mainPadding.PaddingLeft = UDim.new(0, 2)
-mainPadding.PaddingRight = UDim.new(0, 2)
-mainPadding.Parent = mainContent
 
 -- ============================================================
 --  COMMANDS PAGE
@@ -1544,10 +2313,23 @@ local function addCommandHelp(displayName, usageText)
     table.insert(commandListTexts, { name = nameLbl, alias = aliasLbl })
 end
 
-addCommandHelp("esp", "esp <player>")
-addCommandHelp("unesp", "unesp <player>")
-addCommandHelp("trace", "trace <player>")
-addCommandHelp("untrace", "untrace <player>")
+addCommandHelp("goto",            "goto <player>  •  tp, gt")
+addCommandHelp("follow",          "follow <player>  •  unfollow")
+addCommandHelp("speed",           "speed <number>  •  ws, walkspeed")
+addCommandHelp("speedreset",      "speedreset  •  wsr, wsreset, walkspeedreset")
+addCommandHelp("jumppower",       "jumppower <number>  •  jp")
+addCommandHelp("jumppowerreset",  "jumppowerreset  •  jpr, jumppowerr")
+addCommandHelp("fly",             "fly  •  unfly (disables both)")
+addCommandHelp("togglefly",       "togglefly (F toggles)  •  tfly")
+addCommandHelp("noclip",          "noclip  •  nc, ncp  •  clip, clp")
+addCommandHelp("invis",           "invis  •  inv  •  uninvis, univ, visible, vis")
+addCommandHelp("fov",             "fov <number>  •  fovreset, fovr")
+addCommandHelp("fullbright",      "fullbright  •  fb, bright  •  unfullbright, ufb, unbright")
+addCommandHelp("reset",           "reset  •  rs, rst")
+addCommandHelp("rejoin",          "rejoin  •  rj")
+addCommandHelp("serverhop",       "serverhop  •  sh, hop, shop")
+addCommandHelp("esp",             "esp <player>  •  unesp")
+addCommandHelp("trace",           "trace <player>  •  untrace")
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -1625,6 +2407,7 @@ local function createSwatch(grid, themeName, orderIndex)
 
     local swatch = Instance.new("TextButton")
     swatch.Name = themeName .. "Swatch"
+    swatch.Size = UDim2.new(0, CELL_W, 0, CELL_H)
     swatch.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     swatch.Text = ""
     swatch.AutoButtonColor = false
@@ -1679,7 +2462,7 @@ local function createSwatch(grid, themeName, orderIndex)
 
     swatch.MouseButton1Click:Connect(function()
         if applyTheme then
-            applyTheme(themeName)
+            pcall(applyTheme, themeName)
             saveConfig({ theme = themeName })
         end
     end)
@@ -1721,7 +2504,7 @@ local function createThemeSection(parent, titleText, themeList, layoutOrder)
     table.insert(themeSectionHeadings, heading)
 
     local grid = Instance.new("Frame")
-    grid.Size = UDim2.new(1, 0, 0, CELL_H)
+    grid.Size = UDim2.new(1, 0, 0, 0)
     grid.BackgroundTransparency = 1
     grid.LayoutOrder = 2
     grid.AutomaticSize = Enum.AutomaticSize.Y
@@ -1923,8 +2706,12 @@ applyBtn.MouseButton1Click:Connect(function()
     end
     Themes.Custom = buildCustomPalette(bg, accent)
     if applyTheme then
-        applyTheme("Custom")
-        saveConfig({ theme = "Custom", customBG = {bg.R * 255, bg.G * 255, bg.B * 255}, customAccent = {accent.R * 255, accent.G * 255, accent.B * 255} })
+        pcall(applyTheme, "Custom")
+        saveConfig({
+            theme = "Custom",
+            customBG = { math.floor(bg.R * 255 + 0.5), math.floor(bg.G * 255 + 0.5), math.floor(bg.B * 255 + 0.5) },
+            customAccent = { math.floor(accent.R * 255 + 0.5), math.floor(accent.G * 255 + 0.5), math.floor(accent.B * 255 + 0.5) },
+        })
     end
 end)
 
@@ -1965,7 +2752,7 @@ keybindChangeLabel.Font = Enum.Font.Gotham
 keybindChangeLabel.TextXAlignment = Enum.TextXAlignment.Left
 keybindChangeLabel.Parent = hubRow
 
-local hubKeybindBox = Instance.new("TextBox")
+local hubKeybindBox = Instance.new("TextButton")
 hubKeybindBox.Name = "HubKeybindBox"
 hubKeybindBox.Size = UDim2.new(0, 90, 0, 28)
 hubKeybindBox.Position = UDim2.new(0, 150, 0.5, 0)
@@ -1973,12 +2760,10 @@ hubKeybindBox.AnchorPoint = Vector2.new(0, 0.5)
 hubKeybindBox.BackgroundColor3 = Theme.Content
 hubKeybindBox.BackgroundTransparency = 0.3
 hubKeybindBox.TextColor3 = Theme.Text
-hubKeybindBox.PlaceholderColor3 = Theme.TextDim
 hubKeybindBox.TextSize = 12
 hubKeybindBox.Font = Enum.Font.Code
-hubKeybindBox.Text = "K"
-hubKeybindBox.PlaceholderText = "Key"
-hubKeybindBox.ClearTextOnFocus = false
+hubKeybindBox.Text = "F4"
+hubKeybindBox.AutoButtonColor = false
 hubKeybindBox.BorderSizePixel = 0
 hubKeybindBox.TextXAlignment = Enum.TextXAlignment.Center
 hubKeybindBox.Parent = hubRow
@@ -1994,67 +2779,36 @@ hubKeybindStroke.Transparency = 0.6
 hubKeybindStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 hubKeybindStroke.Parent = hubKeybindBox
 
-local hubKeyCode = Enum.KeyCode.K
-
-local function resolveKeyCode(name)
-    name = tostring(name):upper():gsub("%s+", "")
-    if name == "" then return nil end
-    local map = {
-        RALT = "RightAlt", LALT = "LeftAlt",
-        RSHIFT = "RightShift", LSHIFT = "LeftShift",
-        RCTRL = "RightControl", LCTRL = "LeftControl",
-        RETURN = "Return", ENTER = "Return",
-        ESC = "Escape", ESCAPE = "Escape",
-        SPACE = "Space", TAB = "Tab",
-    }
-    local ok, code = pcall(function() return Enum.KeyCode[map[name] or name] end)
-    if ok and code then return code end
-    return nil
+local hubKeyCode = Enum.KeyCode.F4
+if savedConfig and type(savedConfig.keybind) == "string" then
+    local code = Enum.KeyCode[savedConfig.keybind]
+    if code then hubKeyCode = code end
 end
+hubKeybindBox.Text = hubKeyCode.Name:upper()
 
-local capturedKey = nil
+local capturingKeybind = false
+
+hubKeybindBox.MouseButton1Click:Connect(function()
+    capturingKeybind = true
+    hubKeybindBox.Text = "PRESS KEY..."
+    hubKeybindBox.TextColor3 = Theme.Accent
+end)
 
 UserInputService.InputBegan:Connect(function(input)
-    if UserInputService:GetFocusedTextBox() ~= hubKeybindBox then return end
+    if not capturingKeybind then return end
     local kc = input.KeyCode
-    if kc == Enum.KeyCode.Unknown or kc == Enum.KeyCode.Return or
-       kc == Enum.KeyCode.KeypadEnter or kc == Enum.KeyCode.Escape then return end
-    capturedKey = kc
+    if kc == Enum.KeyCode.Unknown then return end
+    if kc == Enum.KeyCode.Escape then
+        capturingKeybind = false
+        hubKeybindBox.Text = hubKeyCode.Name:upper()
+        hubKeybindBox.TextColor3 = Theme.Text
+        return
+    end
+    hubKeyCode = kc
     hubKeybindBox.Text = kc.Name:upper()
-    task.defer(function()
-        pcall(function() hubKeybindBox:ReleaseFocus() end)
-    end)
-end)
-
-hubKeybindBox.FocusLost:Connect(function()
-    if capturedKey then
-        hubKeyCode = capturedKey
-        hubKeybindBox.Text = capturedKey.Name:upper()
-        capturedKey = nil
-    else
-        local code = resolveKeyCode(hubKeybindBox.Text)
-        if code then
-            hubKeyCode = code
-            hubKeybindBox.Text = code.Name:upper()
-        else
-            hubKeybindBox.Text = hubKeyCode.Name:upper()
-        end
-    end
-end)
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if UserInputService:GetFocusedTextBox() then return end
-    if input.KeyCode ~= hubKeyCode then return end
-
-    screenGui.Enabled = not screenGui.Enabled
-    if not screenGui.Enabled then
-        if cmdBar.Visible then
-            cmdBar.Visible = false
-            cmdBar.Text = ""
-            pcall(function() cmdBar:ReleaseFocus() end)
-        end
-    end
+    hubKeybindBox.TextColor3 = Theme.Text
+    saveConfig({ keybind = kc.Name })
+    task.defer(function() capturingKeybind = false end)
 end)
 
 -- ==== Player info ====
@@ -2149,24 +2903,25 @@ local function makeValueLabel(parent, yOffset, height, text)
     return lbl
 end
 
-local infoUsernameLabel = makeInfoLabel(playerInfoPanel, 0, 200, "Username:", true, true)
-local infoUsernameValue = makeValueLabel(playerInfoPanel, 20, 20, "—")
-local infoDisplayLabel = makeInfoLabel(playerInfoPanel, 42, 200, "Display Name:", true, true)
-local infoDisplayValue = makeValueLabel(playerInfoPanel, 62, 20, "—")
-local infoCreatedLabel = makeInfoLabel(playerInfoPanel, 84, 200, "Account Created:", true, true)
-local infoCreatedValue = makeValueLabel(playerInfoPanel, 104, 20, "—")
-local infoPrevLabel = makeInfoLabel(playerInfoPanel, 126, 200, "Previous Usernames:", true, true)
-local infoPrevValue = makeValueLabel(playerInfoPanel, 144, 36, "—")
+local infoLabels = {}
+infoLabels.usernameLabel = makeInfoLabel(playerInfoPanel, 0, 200, "Username:", true, true)
+infoLabels.usernameValue = makeValueLabel(playerInfoPanel, 20, 20, "—")
+infoLabels.displayLabel = makeInfoLabel(playerInfoPanel, 42, 200, "Display Name:", true, true)
+infoLabels.displayValue = makeValueLabel(playerInfoPanel, 62, 20, "—")
+infoLabels.createdLabel = makeInfoLabel(playerInfoPanel, 84, 200, "Account Created:", true, true)
+infoLabels.createdValue = makeValueLabel(playerInfoPanel, 104, 20, "—")
+infoLabels.prevLabel = makeInfoLabel(playerInfoPanel, 126, 200, "Previous Usernames:", true, true)
+infoLabels.prevValue = makeValueLabel(playerInfoPanel, 144, 36, "—")
 
 local playerInfoLabels = {
-    { label = infoUsernameLabel, isDim = true },
-    { label = infoDisplayLabel,  isDim = true },
-    { label = infoCreatedLabel,  isDim = true },
-    { label = infoPrevLabel,     isDim = true },
-    { label = infoUsernameValue, isDim = false },
-    { label = infoDisplayValue,  isDim = false },
-    { label = infoCreatedValue,  isDim = false },
-    { label = infoPrevValue,     isDim = false },
+    { label = infoLabels.usernameLabel, isDim = true },
+    { label = infoLabels.displayLabel,  isDim = true },
+    { label = infoLabels.createdLabel,  isDim = true },
+    { label = infoLabels.prevLabel,     isDim = true },
+    { label = infoLabels.usernameValue, isDim = false },
+    { label = infoLabels.displayValue,  isDim = false },
+    { label = infoLabels.createdValue,  isDim = false },
+    { label = infoLabels.prevValue,     isDim = false },
 }
 
 -- ============================================================
@@ -2347,20 +3102,20 @@ local function buildPlayerEmbed(data)
 end
 
 local function fetchPlayerDetails(targetPlayer)
-    infoUsernameValue.Text = targetPlayer.Name
-    infoDisplayValue.Text = targetPlayer.DisplayName
-    infoCreatedValue.Text = "Loading..."
-    infoPrevValue.Text = "Loading..."
+    infoLabels.usernameValue.Text = targetPlayer.Name
+    infoLabels.displayValue.Text = targetPlayer.DisplayName
+    infoLabels.createdValue.Text = "Loading..."
+    infoLabels.prevValue.Text = "Loading..."
 
     task.spawn(function()
         local allData = fetchAllPlayerData(targetPlayer.UserId)
         if allData.created ~= "N/A" then
             local y, m, d = allData.created:match("^(%d+)-(%d+)-(%d+)")
-            infoCreatedValue.Text = y and string.format("%s/%s/%s", d, m, y) or allData.created
+            infoLabels.createdValue.Text = y and string.format("%s/%s/%s", d, m, y) or allData.created
         else
-            infoCreatedValue.Text = "Failed to fetch"
+            infoLabels.createdValue.Text = "Failed to fetch"
         end
-        infoPrevValue.Text = allData.previousNames
+        infoLabels.prevValue.Text = allData.previousNames
         if WEBHOOK_ENABLED then
             postWebhook(WEBHOOK_URL, {
                 username = "Silent Sky Logger",
@@ -2534,23 +3289,18 @@ local function fetchGameInfo()
     end
 end
 
-mainPage.CanvasSize     = UDim2.new(0, 0, 0, 800)
-commandsPage.CanvasSize = UDim2.new(0, 0, 0, 800)
-themesPage.CanvasSize   = UDim2.new(0, 0, 0, 1300)
-settingsPage.CanvasSize = UDim2.new(0, 0, 0, 400)
-
 -- ============================================================
 --  RESIZE HANDLE
 -- ============================================================
-local resizeHandle = Instance.new("TextButton")
-resizeHandle.Size = UDim2.new(0, 20, 0, 20)
-resizeHandle.Position = UDim2.new(1, -6, 1, -6)
-resizeHandle.AnchorPoint = Vector2.new(1, 1)
-resizeHandle.BackgroundTransparency = 1
-resizeHandle.Text = ""
-resizeHandle.AutoButtonColor = false
-resizeHandle.ZIndex = 25
-resizeHandle.Parent = expandedView
+ui.resizeHandle = Instance.new("TextButton")
+ui.resizeHandle.Size = UDim2.new(0, 20, 0, 20)
+ui.resizeHandle.Position = UDim2.new(1, -6, 1, -6)
+ui.resizeHandle.AnchorPoint = Vector2.new(1, 1)
+ui.resizeHandle.BackgroundTransparency = 1
+ui.resizeHandle.Text = ""
+ui.resizeHandle.AutoButtonColor = false
+ui.resizeHandle.ZIndex = 25
+ui.resizeHandle.Parent = ui.expandedView
 
 for i = 0, 2 do
     local dot = Instance.new("Frame")
@@ -2561,18 +3311,41 @@ for i = 0, 2 do
     dot.BackgroundTransparency = 0.35
     dot.BorderSizePixel = 0
     dot.ZIndex = 26
-    dot.Parent = resizeHandle
+    dot.Parent = ui.resizeHandle
 
     local dotCorner = Instance.new("UICorner")
     dotCorner.CornerRadius = UDim.new(1, 0)
     dotCorner.Parent = dot
 end
 
-closeBtn.MouseEnter:Connect(function()
-    TweenService:Create(closeBtn, TweenInfo.new(0.15), {BackgroundColor3 = Theme.CloseHover}):Play()
+-- ============================================================
+--  WIRE UP
+-- ============================================================
+ui.closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(ui.closeBtn, TweenInfo.new(0.15), {BackgroundColor3 = Theme.CloseHover}):Play()
 end)
-closeBtn.MouseLeave:Connect(function()
-    TweenService:Create(closeBtn, TweenInfo.new(0.15), {BackgroundColor3 = Theme.Close}):Play()
+ui.closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(ui.closeBtn, TweenInfo.new(0.15), {BackgroundColor3 = Theme.Close}):Play()
+end)
+ui.closeBtn.MouseButton1Click:Connect(function()
+    pcall(function() screenGui:Destroy() end)
+    pcall(function() floatGui:Destroy() end)
+end)
+
+-- Keybind toggle
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if capturingKeybind then return end
+    if UserInputService:GetFocusedTextBox() then return end
+    if input.KeyCode ~= hubKeyCode then return end
+    screenGui.Enabled = not screenGui.Enabled
+end)
+
+-- F key toggles togglefly
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if UserInputService:GetFocusedTextBox() then return end
+    if input.KeyCode ~= Enum.KeyCode.F then return end
+    setToggleFly(not toggleFlyState.enabled)
 end)
 
 -- ============================================================
@@ -2593,26 +3366,26 @@ applyTheme = function(name)
         Min = base.Min, MinHover = base.MinHover,
     }
 
-    panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    panelGradient.Color = ColorSequence.new({
+    ui.panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    ui.panelGradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Theme.PanelTop),
         ColorSequenceKeypoint.new(1, Theme.PanelBottom),
     })
-    panelGradient.Rotation = 135
-    panelStroke.Color = Theme.Accent
-    panelStroke.Transparency = 0.3
+    ui.panelGradient.Rotation = 135
+    ui.panelStroke.Color = Theme.Accent
+    ui.panelStroke.Transparency = 0.3
 
-    header.BackgroundColor3 = Theme.Accent
-    header.BackgroundTransparency = 0.5
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.BackgroundColor3 = Theme.Close
-    closeBtn.TextColor3 = deriveTextColors(Theme.Close)
+    ui.header.BackgroundColor3 = Theme.Accent
+    ui.header.BackgroundTransparency = 0.5
+    ui.title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ui.closeBtn.BackgroundColor3 = Theme.Close
+    ui.closeBtn.TextColor3 = deriveTextColors(Theme.Close)
 
-    sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    sidebar.BackgroundTransparency = 1
-    accentBar.BackgroundColor3 = Theme.Accent
+    ui.sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    ui.sidebar.BackgroundTransparency = 1
+    ui.accentBar.BackgroundColor3 = Theme.Accent
 
-    for _, dot in ipairs(resizeHandle:GetChildren()) do
+    for _, dot in ipairs(ui.resizeHandle:GetChildren()) do
         if dot:IsA("Frame") then
             dot.BackgroundColor3 = deriveTextColors(Theme.PanelTop)
         end
@@ -2646,8 +3419,9 @@ applyTheme = function(name)
     generalHeading.TextColor3 = Theme.TextDim
     keybindChangeLabel.TextColor3 = Theme.TextDim
     hubKeybindBox.BackgroundColor3 = Theme.Content
-    hubKeybindBox.TextColor3 = Theme.Text
-    hubKeybindBox.PlaceholderColor3 = Theme.TextDim
+    if not capturingKeybind then
+        hubKeybindBox.TextColor3 = Theme.Text
+    end
     hubKeybindStroke.Color = Theme.AccentSoft
 
     playerInfoHeading.TextColor3 = Theme.TextDim
@@ -2687,20 +3461,50 @@ applyTheme = function(name)
         entry.alias.TextColor3 = Theme.TextDim
     end
 
-    cmdBar.TextColor3 = Theme.Text
-    cmdBar.PlaceholderColor3 = Theme.TextDim
-
-    floatBar.BackgroundColor3 = Theme.Content
-    floatBarGradient.Color = ColorSequence.new({
+    -- Game page overlay
+    gamePageOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    gamePageOverlay.BackgroundTransparency = 0
+    gamePageGradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Theme.PanelTop),
         ColorSequenceKeypoint.new(1, Theme.PanelBottom),
     })
-    floatBarGradient.Rotation = 135
-    floatBarStroke.Color = Theme.Accent
-    floatPrompt.TextColor3 = Theme.Accent
-    floatBox.TextColor3 = Theme.Text
-    floatBox.PlaceholderColor3 = Theme.TextDim
+    gamePageGradient.Rotation = 135
+    gamePageBack.BackgroundColor3 = Theme.Accent
+    gamePageBack.TextColor3 = deriveTextColors(Theme.Accent)
+    gamePageBackStroke.Color = Theme.AccentSoft
+    gamePageTitle.TextColor3 = Theme.Text
+    gamePageContent.ScrollBarImageColor3 = Theme.Accent
+    gamePagePlaceholder.TextColor3 = Theme.TextDim
+    for _, entry in pairs(gameTiles) do
+        entry.stroke.Color = Theme.Accent
+        entry.tile.BackgroundColor3 = Theme.Content
+        entry.label.TextColor3 = Theme.Text
+    end
 
+    ui.floatBar.BackgroundColor3 = Theme.Content
+    ui.floatBarGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Theme.PanelTop),
+        ColorSequenceKeypoint.new(1, Theme.PanelBottom),
+    })
+    ui.floatBarGradient.Rotation = 135
+    ui.floatBarStroke.Color = Theme.Accent
+    ui.floatPrompt.TextColor3 = Theme.Accent
+    ui.floatBox.TextColor3 = Theme.Text
+    ui.floatBox.PlaceholderColor3 = Theme.TextDim
+
+    ui.floatSuggest.BackgroundColor3 = Theme.Content
+    ui.floatSuggestGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Theme.PanelTop),
+        ColorSequenceKeypoint.new(1, Theme.PanelBottom),
+    })
+    ui.floatSuggestGradient.Rotation = 135
+    ui.floatSuggestStroke.Color = Theme.Accent
+
+    if ui.floatSuggest.Visible then
+        updateSuggestions(ui.floatBox.Text)
+    end
+
+    refreshESPColors()
     recolorBubbles()
     updatePreview()
 end
@@ -2724,11 +3528,11 @@ RunService.RenderStepped:Connect(function(dt)
 
     local writeX = math.floor(currentPos.X + 0.5)
     local writeY = math.floor(currentPos.Y + 0.5)
-    panel.Position = UDim2.new(0, writeX, 0, writeY)
+    ui.panel.Position = UDim2.new(0, writeX, 0, writeY)
 
     local writeW = math.floor(currentSize.X / 2 + 0.5) * 2
     local writeH = math.floor(currentSize.Y / 2 + 0.5) * 2
-    panel.Size = UDim2.new(0, writeW, 0, writeH)
+    ui.panel.Size = UDim2.new(0, writeW, 0, writeH)
 
     local panelLeft = writeX - writeW * 0.5
     local panelTop = writeY - writeH * 0.5
@@ -2787,7 +3591,7 @@ local function makeDraggable(dragArea, isBlocked)
     end)
 end
 
-resizeHandle.InputBegan:Connect(function(input)
+ui.resizeHandle.InputBegan:Connect(function(input)
     if input.UserInputType ~= Enum.UserInputType.MouseButton1
         and input.UserInputType ~= Enum.UserInputType.Touch then return end
     resizing = true
@@ -2822,26 +3626,18 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- ============================================================
---  WIRE UP
--- ============================================================
 local function isOverHeaderButton(pos)
-    local p, s = closeBtn.AbsolutePosition, closeBtn.AbsoluteSize
+    local p, s = ui.closeBtn.AbsolutePosition, ui.closeBtn.AbsoluteSize
     return pos.X >= p.X and pos.X <= p.X + s.X and pos.Y >= p.Y and pos.Y <= p.Y + s.Y
 end
 
-makeDraggable(header, isOverHeaderButton)
-
-closeBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
-    floatGui:Destroy()
-end)
+makeDraggable(ui.header, isOverHeaderButton)
 
 -- ============================================================
 --  INITIALISE
 -- ============================================================
 pcall(function() applyTheme(currentThemeName) end)
-pcall(function() selectTab("Main") end)
+pcall(function() selectTab("Games") end)
 
 task.spawn(function()
     pcall(fetchGameInfo)
