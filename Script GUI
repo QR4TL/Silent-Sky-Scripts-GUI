@@ -3787,7 +3787,7 @@ local function openGamePage(gameInfo)
     safeBoxBtn.Size = UDim2.new(0, 260, 0, 44)
     safeBoxBtn.BackgroundColor3 = Theme.Content
     safeBoxBtn.BackgroundTransparency = 0.1
-    safeBoxBtn.Text = "Teleport to Safe Box (50k, 50k, 50k)"
+    safeBoxBtn.Text = "Teleport to Safe Box"
     safeBoxBtn.TextColor3 = Theme.Text
     safeBoxBtn.TextSize = 14
     safeBoxBtn.Font = Enum.Font.GothamBold
@@ -3917,7 +3917,7 @@ local function openGamePage(gameInfo)
         autoBoxToggleEntry.row.LayoutOrder = getNextLayoutOrder()
     else
         autoBoxToggleEntry = createToggle(gp.content, {
-            label = "Auto Safe Box (If Hider)",
+            label = "Auto Safe Box",
             default = false,
             centered = true,
             layoutOrder = getNextLayoutOrder(),
