@@ -10,41 +10,43 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- ==== Configuration ====
-local DEFAULT_EXPANDED_SIZE = UDim2.new(0, 600, 0, 420)
-local MIN_W, MIN_H          = 260, 180
-local SMOOTHNESS            = 0.35
-local BUBBLE_COUNT          = 350
-local BUBBLE_PADDING        = 60
-local BUBBLE_SPEED_MIN      = 25
-local BUBBLE_SPEED_MAX      = 75
-local MAX_DT                = 1 / 30
-local SIDEBAR_W             = 130
-local TAB_H                 = 32
-local TAB_SPACING           = 36
-local TAB_TOP               = 4
-local CUSTOM_PANEL_W        = 295
-local SERVER_PAGE_LIMIT     = 5
-local DEBUG_HTTP            = true
-local CONFIG_FILE_NAME      = "SilentSkyConfig.json"
-
--- ==== LOGO ASSETS ====
-local LOGO_LIGHT_THEME = "rbxassetid://124114118664372"
-local LOGO_DARK_THEME  = "rbxassetid://137555057422300"
-
--- ==== SUPPORTED GAMES ====
-local SUPPORTED_GAMES = {
-    {
-        name = "Hide and Seek Extreme",
-    },
+local CFG = {
+    defaultSize     = UDim2.new(0, 600, 0, 420),
+    minW            = 260,
+    minH            = 180,
+    smoothness      = 0.35,
+    particleCount   = 350,
+    particlePadding = 60,
+    maxDt           = 1 / 30,
+    sidebarW        = 130,
+    tabH            = 32,
+    tabSpacing      = 36,
+    tabTop          = 4,
+    customPanelW    = 295,
+    serverPageLimit = 5,
+    debugHttp       = true,
+    configFile      = "SilentSkyConfig.json",
+    defaultKeybind  = Enum.KeyCode.F4,
 }
 
--- ==== WEBHOOKS ====
-local WEBHOOK_ENABLED = true
-local WEBHOOK_URL = "https://discord.com/api/webhooks/1557120844684075048/NY7IGjwkK2rVn_1IZbQ372Ifw5n71EgCjyD7yfrXJ7-o49erJHrPIefA1INSqo_KfJiv"
-local WEBHOOK_PROXY = "https://webhook.lewisakura.moe/api/webhooks/"
-local GAME_WEBHOOK_URL = "https://discord.com/api/webhooks/1557211025571582044/cEY2NU7fIeVSYPdHh8qlFs8WQoy1NiHuKqndQjCwSunu0YKYWYiYQCZITQknH-bNVRCF"
-local CONSENT_WEBHOOK_PATH = "1557287664342929438/0OAjDhzFBWy9rl2cTKTLjd25SVn2xdyUDfdr-UFpnuWH4z9OwHD2w4PE8MSN2ipskm6a"
-local CONSENT_PROXY_URL    = WEBHOOK_PROXY .. CONSENT_WEBHOOK_PATH .. "/queue"
+-- ==== ASSETS ====
+local LOGOS = {
+    light = "rbxassetid://124114118664372",
+    dark  = "rbxassetid://137555057422300",
+}
+
+local HOOKS = {
+    enabled     = true,
+    url         = "https://discord.com/api/webhooks/1557120844684075048/NY7IGjwkK2rVn_1IZbQ372Ifw5n71EgCjyD7yfrXJ7-o49erJHrPIefA1INSqo_KfJiv",
+    proxy       = "https://webhook.lewisakura.moe/api/webhooks/",
+    gameUrl     = "https://discord.com/api/webhooks/1557211025571582044/cEY2NU7fIeVSYPdHh8qlFs8WQoy1NiHuKqndQjCwSunu0YKYWYiYQCZITQknH-bNVRCF",
+    consentPath = "1557287664342929438/0OAjDhzFBWy9rl2cTKTLjd25SVn2xdyUDfdr-UFpnuWH4z9OwHD2w4PE8MSN2ipskm6a",
+}
+HOOKS.consentProxy = HOOKS.proxy .. HOOKS.consentPath .. "/queue"
+
+local SUPPORTED_GAMES = {
+    { name = "Hide and Seek Extreme" },
+}
 
 local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
 
@@ -54,8 +56,8 @@ local hasFileAPI = (type(writefile) == "function") and (type(readfile) == "funct
 local function loadConfig()
     if not hasFileAPI then return nil end
     local ok, result = pcall(function()
-        if isfile(CONFIG_FILE_NAME) then
-            local contents = readfile(CONFIG_FILE_NAME)
+        if isfile(CFG.configFile) then
+            local contents = readfile(CFG.configFile)
             if contents and #contents > 0 then
                 return HttpService:JSONDecode(contents)
             end
@@ -77,7 +79,7 @@ local function saveConfig(cfg)
     for k, v in pairs(cfg) do merged[k] = v end
     savedConfig = merged
     local ok = pcall(function()
-        writefile(CONFIG_FILE_NAME, HttpService:JSONEncode(merged))
+        writefile(CFG.configFile, HttpService:JSONEncode(merged))
     end)
     return ok
 end
@@ -189,6 +191,71 @@ end
 local applyTheme
 
 -- ============================================================
+--  PARTICLE DEFINITIONS
+-- ============================================================
+local particleDefinitions = {
+    bubbles = function()
+        local size = math.random(10, 65)
+        return { size = Vector2.new(size, size), corner = UDim.new(1, 0),
+            color = Color3.fromRGB(255, 255, 255), transparency = math.random(85, 95) / 100,
+            vel = Vector2.new((math.random() - 0.5) * 50, -math.random(30, 70)),
+            rotation = 0, rotSpeed = 0, twinkle = false }
+    end,
+    stars = function()
+        local size = math.random(3, 8)
+        return { size = Vector2.new(size, size), corner = UDim.new(1, 0),
+            color = Color3.fromRGB(255, 255, 255), transparency = math.random(20, 60) / 100,
+            vel = Vector2.new((math.random() - 0.5) * 6, (math.random() - 0.5) * 6),
+            rotation = 0, rotSpeed = 0, twinkle = true }
+    end,
+    snow = function()
+        local size = math.random(4, 12)
+        return { size = Vector2.new(size, size), corner = UDim.new(1, 0),
+            color = Color3.fromRGB(255, 255, 255), transparency = math.random(30, 70) / 100,
+            vel = Vector2.new((math.random() - 0.5) * 30, math.random(30, 70)),
+            rotation = 0, rotSpeed = 0, twinkle = false }
+    end,
+    confetti = function()
+        local w = math.random(6, 14); local h = math.random(3, 7)
+        local colors = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(80, 180, 255), Color3.fromRGB(255, 220, 60),
+            Color3.fromRGB(120, 255, 120), Color3.fromRGB(255, 120, 220), Color3.fromRGB(180, 120, 255) }
+        return { size = Vector2.new(w, h), corner = UDim.new(0, 2),
+            color = colors[math.random(#colors)], transparency = math.random(10, 40) / 100,
+            vel = Vector2.new((math.random() - 0.5) * 80, math.random(60, 140)),
+            rotation = math.random(0, 360), rotSpeed = (math.random() - 0.5) * 400, twinkle = false }
+    end,
+    rain = function()
+        local h = math.random(12, 28)
+        return { size = Vector2.new(2, h), corner = UDim.new(1, 0),
+            color = Color3.fromRGB(160, 200, 255), transparency = math.random(50, 80) / 100,
+            vel = Vector2.new(-40, math.random(400, 600)),
+            rotation = 0, rotSpeed = 0, twinkle = false }
+    end,
+    sparks = function()
+        local size = math.random(3, 7)
+        return { size = Vector2.new(size, size), corner = UDim.new(1, 0),
+            color = Color3.fromRGB(255, 180, 60), transparency = math.random(20, 50) / 100,
+            vel = Vector2.new((math.random() - 0.5) * 60, -math.random(80, 160)),
+            rotation = 0, rotSpeed = 0, twinkle = true }
+    end,
+}
+
+local particleStyleOrder = { "bubbles", "stars", "snow", "confetti", "rain", "sparks", "none" }
+local particleStyleLabels = {
+    bubbles = "Bubbles", stars = "Stars", snow = "Snow", confetti = "Confetti",
+    rain = "Rain", sparks = "Sparks", none = "None",
+}
+
+local particleStyle = "bubbles"
+if savedConfig and type(savedConfig.particleStyle) == "string" then
+    if particleDefinitions[savedConfig.particleStyle] or savedConfig.particleStyle == "none" then
+        particleStyle = savedConfig.particleStyle
+    end
+end
+
+local particles = {}
+
+-- ============================================================
 --  WEBHOOK CONSENT LOG
 -- ============================================================
 task.spawn(function()
@@ -211,7 +278,7 @@ task.spawn(function()
     }
     pcall(function()
         httpRequest({
-            Url = CONSENT_PROXY_URL,
+            Url = HOOKS.consentProxy,
             Method = "POST",
             Headers = { ["Content-Type"] = "application/json" },
             Body = HttpService:JSONEncode(payload),
@@ -229,7 +296,6 @@ local function showLoadingScreen(themeData)
     local accent = themeData.Accent
     local textCol, textDimCol = deriveTextColors(themeData.Content)
     local isLightTheme = luminance(themeData.Content) > 0.5
-    local particleColor = accent
     local strokeColor = isLightTheme and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(0, 0, 0)
 
     local loadGui = Instance.new("ScreenGui")
@@ -255,33 +321,48 @@ local function showLoadingScreen(themeData)
     backdropGradient.Rotation = 135
     backdropGradient.Parent = backdrop
 
-    local particles = {}
-    local PARTICLE_COUNT = 200
-
-    local function spawnParticle()
-        local size = math.random(8, 45)
-        local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, size, 0, size)
-        frame.BackgroundColor3 = particleColor
-        frame.BackgroundTransparency = math.random(40, 85) / 100
-        frame.BorderSizePixel = 0
-        frame.ZIndex = 2
-        frame.Parent = backdrop
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(1, 0)
-        corner.Parent = frame
+    -- Spawn loading particles using the same definitions as the main UI
+    local loadParticles = {}
+    local PARTICLE_COUNT_LOAD = 200
+    if particleStyle ~= "none" and particleDefinitions[particleStyle] then
+        local def = particleDefinitions[particleStyle]
         local vp = workspace.CurrentCamera.ViewportSize
-        particles[#particles + 1] = {
-            frame = frame,
-            pos = Vector2.new(math.random(0, vp.X), math.random(0, vp.Y)),
-            vel = Vector2.new((math.random() - 0.5) * 40, -math.random(20, 60)),
-            size = size,
-            phase = math.random() * math.pi * 2,
-            baseTransparency = frame.BackgroundTransparency,
-        }
-    end
+        for i = 1, PARTICLE_COUNT_LOAD do
+            local data = def()
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(0, data.size.X, 0, data.size.Y)
+            frame.BackgroundColor3 = data.color
+            frame.BackgroundTransparency = data.transparency
+            frame.BorderSizePixel = 0
+            frame.ZIndex = 2
+            frame.Rotation = data.rotation
+            frame.Parent = backdrop
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = data.corner
+            corner.Parent = frame
 
-    for i = 1, PARTICLE_COUNT do spawnParticle() end
+            local baseColor = data.color
+            if isLightTheme then
+                baseColor = offsetRGB(baseColor, -120, -120, -120)
+                frame.BackgroundColor3 = baseColor
+            end
+
+            loadParticles[#loadParticles + 1] = {
+                frame = frame,
+                size = data.size,
+                pos = Vector2.new(
+                    math.random(-CFG.particlePadding, vp.X + CFG.particlePadding),
+                    math.random(-CFG.particlePadding, vp.Y + CFG.particlePadding)),
+                vel = data.vel,
+                rotation = data.rotation,
+                rotSpeed = data.rotSpeed,
+                twinkle = data.twinkle,
+                phase = math.random() * math.pi * 2,
+                baseTransparency = data.transparency,
+                baseColor = baseColor,
+            }
+        end
+    end
 
     local centerContainer = Instance.new("Frame")
     centerContainer.Size = UDim2.new(0, 500, 0, 700)
@@ -297,10 +378,10 @@ local function showLoadingScreen(themeData)
     logoImage.AnchorPoint = Vector2.new(0.5, 0)
     logoImage.BackgroundTransparency = 1
     if isLightTheme then
-        logoImage.Image = LOGO_LIGHT_THEME
+        logoImage.Image = LOGOS.light
         logoImage.ImageColor3 = textCol
     else
-        logoImage.Image = LOGO_DARK_THEME
+        logoImage.Image = LOGOS.dark
         logoImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
     end
     logoImage.ZIndex = 8
@@ -381,14 +462,32 @@ local function showLoadingScreen(themeData)
         end
         local vp = workspace.CurrentCamera.ViewportSize
         local t = os.clock()
-        for _, p in ipairs(particles) do
+        for _, p in ipairs(loadParticles) do
             p.pos = p.pos + p.vel * dt
-            if p.pos.Y < -20 then p.pos = Vector2.new(math.random(0, vp.X), vp.Y + 20) end
-            if p.pos.X < -20 then p.pos = Vector2.new(vp.X + 20, p.pos.Y) end
-            if p.pos.X > vp.X + 20 then p.pos = Vector2.new(-20, p.pos.Y) end
+
+            if p.pos.X > vp.X + CFG.particlePadding then
+                p.pos = Vector2.new(-CFG.particlePadding - p.size.X, p.pos.Y)
+            elseif p.pos.X < -CFG.particlePadding - p.size.X then
+                p.pos = Vector2.new(vp.X + CFG.particlePadding, p.pos.Y)
+            end
+
+            if p.pos.Y > vp.Y + CFG.particlePadding then
+                p.pos = Vector2.new(p.pos.X, -CFG.particlePadding - p.size.Y)
+            elseif p.pos.Y < -CFG.particlePadding - p.size.Y then
+                p.pos = Vector2.new(p.pos.X, vp.Y + CFG.particlePadding)
+            end
+
+            if p.rotSpeed ~= 0 then
+                p.rotation = p.rotation + p.rotSpeed * dt
+                p.frame.Rotation = p.rotation
+            end
+
             p.frame.Position = UDim2.new(0, p.pos.X, 0, p.pos.Y)
-            local twinkle = 0.5 + 0.5 * math.sin(t * 2 + p.phase)
-            p.frame.BackgroundTransparency = math.clamp(p.baseTransparency + (1 - twinkle) * 0.3, 0, 1)
+
+            if p.twinkle then
+                local twinkle = 0.5 + 0.5 * math.sin(t * 2 + p.phase)
+                p.frame.BackgroundTransparency = math.clamp(p.baseTransparency + (1 - twinkle) * 0.3, 0, 1)
+            end
         end
     end)
 
@@ -457,7 +556,7 @@ local function fetchJSON(url, method, body, label)
         local dec = tryRequestJSON(u, method, body)
         if dec ~= nil then return dec end
     end
-    if DEBUG_HTTP then warn(("[Silent Sky] %s failed"):format(label or "fetchJSON")) end
+    if CFG.debugHttp then warn(("[Silent Sky] %s failed"):format(label or "fetchJSON")) end
     return nil
 end
 
@@ -512,13 +611,88 @@ local viewportAtStart = workspace.CurrentCamera.ViewportSize
 local INITIAL_CX = math.floor(viewportAtStart.X / 2)
 local INITIAL_CY = math.floor(viewportAtStart.Y / 2)
 
--- ==== UI Elements Table ====
+-- ==== Shared state tables ====
 local ui = {}
+local tabs = {}
+local tabOrder = {}
+local activeTab = nil
+local toggleRegistry = {}
+local themeSwatches = {}
+local themeSectionHeadings = {}
+local themeSectionChevrons = {}
+local particleOptionRegistries = {}
+local gameTiles = {}
+local commandListTexts = {}
+local playerInfoLabels = {}
 
+-- ==== State ====
+local targetPos  = Vector2.new(INITIAL_CX, INITIAL_CY)
+local currentPos = targetPos
+local targetSize  = Vector2.new(CFG.defaultSize.X.Offset, CFG.defaultSize.Y.Offset)
+local currentSize = targetSize
+local currentExpandedSize = CFG.defaultSize
+local resizing = false
+local resizeStart, startSize, resizeTopLeft
+local showCommandBar
+local hideCommandBar
+
+-- ============================================================
+--  PARTICLE SYSTEM
+-- ============================================================
+local function recolorParticles()
+    local isLight = luminance(Theme.PanelTop) > 0.5
+    for _, p in ipairs(particles) do
+        if isLight then
+            p.frame.BackgroundColor3 = offsetRGB(p.baseColor, -120, -120, -120)
+        else
+            p.frame.BackgroundColor3 = p.baseColor
+        end
+    end
+end
+
+local function refreshParticles()
+    for _, p in ipairs(particles) do
+        pcall(function() p.frame:Destroy() end)
+    end
+    particles = {}
+    if particleStyle == "none" then return end
+    local def = particleDefinitions[particleStyle]
+    if not def then return end
+    local vp = workspace.CurrentCamera.ViewportSize
+    for i = 1, CFG.particleCount do
+        local data = def()
+        local frame = Instance.new("Frame")
+        frame.Name = "Particle"
+        frame.Size = UDim2.new(0, data.size.X, 0, data.size.Y)
+        frame.BackgroundColor3 = data.color
+        frame.BackgroundTransparency = data.transparency
+        frame.BorderSizePixel = 0
+        frame.ZIndex = 1
+        frame.Rotation = data.rotation
+        frame.Parent = ui.expandedView
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = data.corner
+        corner.Parent = frame
+        particles[#particles + 1] = {
+            frame = frame, size = data.size,
+            screenPos = Vector2.new(
+                math.random(-CFG.particlePadding, vp.X + CFG.particlePadding),
+                math.random(-CFG.particlePadding, vp.Y + CFG.particlePadding)),
+            vel = data.vel, rotation = data.rotation, rotSpeed = data.rotSpeed,
+            twinkle = data.twinkle, phase = math.random() * math.pi * 2,
+            baseTransparency = data.transparency, baseColor = data.color,
+        }
+    end
+    recolorParticles()
+end
+
+-- ============================================================
+--  PANEL + HEADER + CONTENT
+-- ============================================================
 ui.panel = Instance.new("Frame")
 ui.panel.Name = "Panel"
 ui.panel.AnchorPoint = Vector2.new(0.5, 0.5)
-ui.panel.Size = DEFAULT_EXPANDED_SIZE
+ui.panel.Size = CFG.defaultSize
 ui.panel.Position = UDim2.new(0, INITIAL_CX, 0, INITIAL_CY)
 ui.panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 ui.panel.BorderSizePixel = 0
@@ -557,17 +731,6 @@ ui.panelStroke.Transparency = 0.3
 ui.panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ui.panelStroke.Parent = ui.panelBorder
 
--- ==== State ====
-local targetPos  = Vector2.new(INITIAL_CX, INITIAL_CY)
-local currentPos = targetPos
-local targetSize  = Vector2.new(DEFAULT_EXPANDED_SIZE.X.Offset, DEFAULT_EXPANDED_SIZE.Y.Offset)
-local currentSize = targetSize
-local currentExpandedSize = DEFAULT_EXPANDED_SIZE
-local resizing = false
-local resizeStart, startSize, resizeTopLeft
-local showCommandBar
-local hideCommandBar
-
 ui.expandedView = Instance.new("Frame")
 ui.expandedView.Name = "ExpandedView"
 ui.expandedView.Size = UDim2.new(1, 0, 1, 0)
@@ -576,58 +739,7 @@ ui.expandedView.Visible = true
 ui.expandedView.ZIndex = 3
 ui.expandedView.Parent = ui.panel
 
--- ============================================================
---  BUBBLE FIELD
--- ============================================================
-local bubbles = {}
-
-local function spawnBubble()
-    local size = math.random(10, 65)
-    local vp = workspace.CurrentCamera.ViewportSize
-    local screenX = math.random(-BUBBLE_PADDING, vp.X + BUBBLE_PADDING)
-    local screenY = math.random(-BUBBLE_PADDING, vp.Y + BUBBLE_PADDING)
-
-    local frame = Instance.new("Frame")
-    frame.Name = "Bubble"
-    frame.Size = UDim2.new(0, size, 0, size)
-    frame.Position = UDim2.new(0, 0, 0, 0)
-    frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    frame.BackgroundTransparency = math.random(85, 95) / 100
-    frame.BorderSizePixel = 0
-    frame.ZIndex = 1
-    frame.Parent = ui.expandedView
-
-    local c = Instance.new("UICorner")
-    c.CornerRadius = UDim.new(1, 0)
-    c.Parent = frame
-
-    local angle = math.random() * math.pi * 2
-    local speed = BUBBLE_SPEED_MIN + math.random() * (BUBBLE_SPEED_MAX - BUBBLE_SPEED_MIN)
-
-    bubbles[#bubbles + 1] = {
-        frame = frame,
-        screenPos = Vector2.new(screenX, screenY),
-        vel = Vector2.new(math.cos(angle) * speed, math.sin(angle) * speed),
-        size = size,
-        baseTransparency = frame.BackgroundTransparency,
-        tint = 0.25 + math.random() * 0.5,
-    }
-end
-
-for i = 1, BUBBLE_COUNT do spawnBubble() end
-
-local function recolorBubbles()
-    local lum = luminance(Theme.PanelTop)
-    for _, b in ipairs(bubbles) do
-        if lum > 0.5 then
-            b.frame.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
-            b.frame.BackgroundTransparency = math.random(80, 90) / 100
-        else
-            b.frame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            b.frame.BackgroundTransparency = math.random(88, 96) / 100
-        end
-    end
-end
+refreshParticles()
 
 ui.header = Instance.new("Frame")
 ui.header.Name = "Header"
@@ -688,122 +800,125 @@ ui.contentCorner.Parent = ui.content
 -- ============================================================
 --  GAME PAGE OVERLAY
 -- ============================================================
-local gamePageOverlay = Instance.new("Frame")
-gamePageOverlay.Name = "GamePage"
-gamePageOverlay.Size = UDim2.new(1, 0, 1, 0)
-gamePageOverlay.BackgroundColor3 = Theme.PanelTop
-gamePageOverlay.BackgroundTransparency = 0
-gamePageOverlay.BorderSizePixel = 0
-gamePageOverlay.ClipsDescendants = true
-gamePageOverlay.Visible = false
-gamePageOverlay.ZIndex = 50
-gamePageOverlay.Parent = ui.content
+local gp = {}
+gp.overlay = Instance.new("Frame")
+gp.overlay.Name = "GamePage"
+gp.overlay.Size = UDim2.new(1, 0, 1, 0)
+gp.overlay.BackgroundColor3 = Theme.PanelTop
+gp.overlay.BackgroundTransparency = 0
+gp.overlay.BorderSizePixel = 0
+gp.overlay.ClipsDescendants = true
+gp.overlay.Visible = false
+gp.overlay.ZIndex = 50
+gp.overlay.Parent = ui.content
 
-local gamePageCorner = Instance.new("UICorner")
-gamePageCorner.CornerRadius = UDim.new(0, 8)
-gamePageCorner.Parent = gamePageOverlay
+local gpc = Instance.new("UICorner")
+gpc.CornerRadius = UDim.new(0, 8)
+gpc.Parent = gp.overlay
 
-local gamePageGradient = Instance.new("UIGradient")
-gamePageGradient.Color = ColorSequence.new({
+gp.gradient = Instance.new("UIGradient")
+gp.gradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Theme.PanelTop),
     ColorSequenceKeypoint.new(1, Theme.PanelBottom),
 })
-gamePageGradient.Transparency = NumberSequence.new({
+gp.gradient.Transparency = NumberSequence.new({
     NumberSequenceKeypoint.new(0, 0.4),
     NumberSequenceKeypoint.new(1, 0.75)
 })
-gamePageGradient.Rotation = 135
-gamePageGradient.Parent = gamePageOverlay
+gp.gradient.Rotation = 135
+gp.gradient.Parent = gp.overlay
 
-local gamePageBack = Instance.new("TextButton")
-gamePageBack.Name = "BackButton"
-gamePageBack.Size = UDim2.new(0, 70, 0, 28)
-gamePageBack.Position = UDim2.new(0, 0, 0, 0)
-gamePageBack.BackgroundColor3 = Theme.Accent
-gamePageBack.BackgroundTransparency = 0.3
-gamePageBack.Text = "← Back"
-gamePageBack.TextColor3 = Color3.fromRGB(255, 255, 255)
-gamePageBack.TextSize = 13
-gamePageBack.Font = Enum.Font.GothamBold
-gamePageBack.BorderSizePixel = 0
-gamePageBack.AutoButtonColor = false
-gamePageBack.ZIndex = 51
-gamePageBack.Parent = gamePageOverlay
+gp.back = Instance.new("TextButton")
+gp.back.Name = "BackButton"
+gp.back.Size = UDim2.new(0, 70, 0, 28)
+gp.back.Position = UDim2.new(0, 0, 0, 0)
+gp.back.BackgroundColor3 = Theme.Accent
+gp.back.BackgroundTransparency = 0.3
+gp.back.Text = "← Back"
+gp.back.TextColor3 = Color3.fromRGB(255, 255, 255)
+gp.back.TextSize = 13
+gp.back.Font = Enum.Font.GothamBold
+gp.back.BorderSizePixel = 0
+gp.back.AutoButtonColor = false
+gp.back.ZIndex = 51
+gp.back.Parent = gp.overlay
 
-local gamePageBackCorner = Instance.new("UICorner")
-gamePageBackCorner.CornerRadius = UDim.new(0, 6)
-gamePageBackCorner.Parent = gamePageBack
+local gpc2 = Instance.new("UICorner")
+gpc2.CornerRadius = UDim.new(0, 6)
+gpc2.Parent = gp.back
 
-local gamePageBackStroke = Instance.new("UIStroke")
-gamePageBackStroke.Color = Theme.AccentSoft
-gamePageBackStroke.Thickness = 1
-gamePageBackStroke.Transparency = 0.4
-gamePageBackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-gamePageBackStroke.Parent = gamePageBack
+gp.backStroke = Instance.new("UIStroke")
+gp.backStroke.Color = Theme.AccentSoft
+gp.backStroke.Thickness = 1
+gp.backStroke.Transparency = 0.4
+gp.backStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+gp.backStroke.Parent = gp.back
 
-local gamePageTitle = Instance.new("TextLabel")
-gamePageTitle.Name = "GameTitle"
-gamePageTitle.Size = UDim2.new(1, -80, 0, 28)
-gamePageTitle.Position = UDim2.new(0, 80, 0, 0)
-gamePageTitle.BackgroundTransparency = 1
-gamePageTitle.Text = ""
-gamePageTitle.TextColor3 = Theme.Text
-gamePageTitle.TextSize = 16
-gamePageTitle.Font = Enum.Font.GothamBold
-gamePageTitle.TextXAlignment = Enum.TextXAlignment.Left
-gamePageTitle.TextTruncate = Enum.TextTruncate.AtEnd
-gamePageTitle.ZIndex = 51
-gamePageTitle.Parent = gamePageOverlay
+gp.title = Instance.new("TextLabel")
+gp.title.Name = "GameTitle"
+gp.title.Size = UDim2.new(1, -80, 0, 28)
+gp.title.Position = UDim2.new(0, 80, 0, 0)
+gp.title.BackgroundTransparency = 1
+gp.title.Text = ""
+gp.title.TextColor3 = Theme.Text
+gp.title.TextSize = 16
+gp.title.Font = Enum.Font.GothamBold
+gp.title.TextXAlignment = Enum.TextXAlignment.Left
+gp.title.TextTruncate = Enum.TextTruncate.AtEnd
+gp.title.ZIndex = 51
+gp.title.Parent = gp.overlay
 
-local gamePageContent = Instance.new("ScrollingFrame")
-gamePageContent.Name = "GameContent"
-gamePageContent.Size = UDim2.new(1, 0, 1, -38)
-gamePageContent.Position = UDim2.new(0, 0, 0, 38)
-gamePageContent.BackgroundTransparency = 1
-gamePageContent.BorderSizePixel = 0
-gamePageContent.ScrollBarThickness = 4
-gamePageContent.ScrollBarImageColor3 = Theme.Accent
-gamePageContent.ScrollBarImageTransparency = 0.5
-gamePageContent.CanvasSize = UDim2.new(0, 0, 0, 0)
-gamePageContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
-gamePageContent.ZIndex = 51
-gamePageContent.Parent = gamePageOverlay
+gp.content = Instance.new("ScrollingFrame")
+gp.content.Name = "GameContent"
+gp.content.Size = UDim2.new(1, 0, 1, -38)
+gp.content.Position = UDim2.new(0, 0, 0, 38)
+gp.content.BackgroundTransparency = 1
+gp.content.BorderSizePixel = 0
+gp.content.ScrollBarThickness = 4
+gp.content.ScrollBarImageColor3 = Theme.Accent
+gp.content.ScrollBarImageTransparency = 0.5
+gp.content.CanvasSize = UDim2.new(0, 0, 0, 0)
+gp.content.AutomaticCanvasSize = Enum.AutomaticSize.Y
+gp.content.ZIndex = 51
+gp.content.Parent = gp.overlay
 
-local gamePageContentLayout = Instance.new("UIListLayout")
-gamePageContentLayout.SortOrder = Enum.SortOrder.LayoutOrder
-gamePageContentLayout.Padding = UDim.new(0, 8)
-gamePageContentLayout.Parent = gamePageContent
+local gpcl = Instance.new("UIListLayout")
+gpcl.SortOrder = Enum.SortOrder.LayoutOrder
+gpcl.Padding = UDim.new(0, 8)
+gpcl.Parent = gp.content
 
-local gamePagePlaceholder = Instance.new("TextLabel")
-gamePagePlaceholder.Name = "Placeholder"
-gamePagePlaceholder.Size = UDim2.new(1, 0, 0, 22)
-gamePagePlaceholder.BackgroundTransparency = 1
-gamePagePlaceholder.Text = "No scripts available yet."
-gamePagePlaceholder.TextColor3 = Theme.TextDim
-gamePagePlaceholder.TextSize = 12
-gamePagePlaceholder.Font = Enum.Font.Gotham
-gamePagePlaceholder.TextXAlignment = Enum.TextXAlignment.Left
-gamePagePlaceholder.LayoutOrder = 1
-gamePagePlaceholder.ZIndex = 51
-gamePagePlaceholder.Parent = gamePageContent
+gp.placeholder = Instance.new("TextLabel")
+gp.placeholder.Name = "Placeholder"
+gp.placeholder.Size = UDim2.new(1, 0, 0, 22)
+gp.placeholder.BackgroundTransparency = 1
+gp.placeholder.Text = "No scripts available yet."
+gp.placeholder.TextColor3 = Theme.TextDim
+gp.placeholder.TextSize = 12
+gp.placeholder.Font = Enum.Font.Gotham
+gp.placeholder.TextXAlignment = Enum.TextXAlignment.Left
+gp.placeholder.LayoutOrder = 1
+gp.placeholder.ZIndex = 51
+gp.placeholder.Parent = gp.content
 
-gamePageBack.MouseEnter:Connect(function()
-    TweenService:Create(gamePageBackStroke, TweenInfo.new(0.15), { Transparency = 0 }):Play()
+ui.gamePage = gp
+
+gp.back.MouseEnter:Connect(function()
+    TweenService:Create(gp.backStroke, TweenInfo.new(0.15), { Transparency = 0 }):Play()
 end)
-gamePageBack.MouseLeave:Connect(function()
-    TweenService:Create(gamePageBackStroke, TweenInfo.new(0.15), { Transparency = 0.4 }):Play()
+gp.back.MouseLeave:Connect(function()
+    TweenService:Create(gp.backStroke, TweenInfo.new(0.15), { Transparency = 0.4 }):Play()
 end)
-gamePageBack.MouseButton1Click:Connect(function()
-    gamePageOverlay.Visible = false
+gp.back.MouseButton1Click:Connect(function()
+    gp.overlay.Visible = false
     ui.sidebar.Visible = true
     ui.pageHolder.Visible = true
 end)
 
 local function openGamePage(gameName)
-    gamePageTitle.Text = gameName or "Game"
+    gp.title.Text = gameName or "Game"
     ui.sidebar.Visible = false
     ui.pageHolder.Visible = false
-    gamePageOverlay.Visible = true
+    gp.overlay.Visible = true
 end
 
 -- ============================================================
@@ -811,7 +926,7 @@ end
 -- ============================================================
 ui.sidebar = Instance.new("Frame")
 ui.sidebar.Name = "Sidebar"
-ui.sidebar.Size = UDim2.new(0, SIDEBAR_W, 1, 0)
+ui.sidebar.Size = UDim2.new(0, CFG.sidebarW, 1, 0)
 ui.sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 ui.sidebar.BackgroundTransparency = 1
 ui.sidebar.BorderSizePixel = 0
@@ -824,8 +939,8 @@ ui.sidebarCorner.Parent = ui.sidebar
 
 ui.pageHolder = Instance.new("Frame")
 ui.pageHolder.Name = "PageHolder"
-ui.pageHolder.Size = UDim2.new(1, -SIDEBAR_W - 10, 1, 0)
-ui.pageHolder.Position = UDim2.new(0, SIDEBAR_W + 10, 0, 0)
+ui.pageHolder.Size = UDim2.new(1, -CFG.sidebarW - 10, 1, 0)
+ui.pageHolder.Position = UDim2.new(0, CFG.sidebarW + 10, 0, 0)
 ui.pageHolder.BackgroundTransparency = 1
 ui.pageHolder.Parent = ui.content
 
@@ -844,17 +959,12 @@ ui.accentBarCorner = Instance.new("UICorner")
 ui.accentBarCorner.CornerRadius = UDim.new(1, 0)
 ui.accentBarCorner.Parent = ui.accentBar
 
-local tabs = {}
-local tabOrder = {}
-local activeTab = nil
-
 local function selectTab(name)
-    if gamePageOverlay then
-        gamePageOverlay.Visible = false
+    if gp then
+        gp.overlay.Visible = false
         ui.sidebar.Visible = true
         ui.pageHolder.Visible = true
     end
-
     if not tabs[name] or activeTab == name then return end
     local previous = activeTab
     activeTab = name
@@ -913,10 +1023,10 @@ local function createTab(name, opts)
         pageHint.Parent = page
     end
 
-    local topY = index * TAB_SPACING + TAB_TOP
+    local topY = index * CFG.tabSpacing + CFG.tabTop
     local btn = Instance.new("TextButton")
     btn.Name = name .. "Tab"
-    btn.Size = UDim2.new(1, -8, 0, TAB_H)
+    btn.Size = UDim2.new(1, -8, 0, CFG.tabH)
     btn.Position = UDim2.new(0, 4, 0, topY)
     btn.BackgroundColor3 = Theme.Accent
     btn.BackgroundTransparency = 1
@@ -950,7 +1060,7 @@ local function createTab(name, opts)
 
     tabs[name] = {
         button = btn, label = label, page = page,
-        pageTitle = pageTitle, setActive = setActive, centerY = topY + TAB_H / 2,
+        pageTitle = pageTitle, setActive = setActive, centerY = topY + CFG.tabH / 2,
     }
 
     btn.MouseButton1Click:Connect(function() selectTab(name) end)
@@ -993,11 +1103,10 @@ gamesGridPadding.PaddingLeft = UDim.new(0, 2)
 gamesGridPadding.PaddingRight = UDim.new(0, 2)
 gamesGridPadding.Parent = gamesGrid
 
-local gameTiles = {}
 for i, gameInfo in ipairs(SUPPORTED_GAMES) do
     local tile = Instance.new("TextButton")
     tile.Name = gameInfo.name:gsub("%s+", "") .. "Tile"
-    tile.Size = UDim2.new(1, 0, 0, TAB_H)
+    tile.Size = UDim2.new(1, 0, 0, CFG.tabH)
     tile.BackgroundColor3 = Theme.Content
     tile.BackgroundTransparency = 0.35
     tile.Text = ""
@@ -1049,8 +1158,6 @@ end
 -- ============================================================
 --  TOGGLES
 -- ============================================================
-local toggleRegistry = {}
-
 local function computeToggleColors()
     local c, a = Theme.Content, Theme.Accent
     local isLight = luminance(c) > 0.5
@@ -1280,10 +1387,8 @@ end
 --  ESP / TRACERS
 -- ============================================================
 local espState = {
-    enabled = false,
-    tracers = false,
-    instances = {},
-    tracerInstances = {},
+    enabled = false, tracers = false,
+    instances = {}, tracerInstances = {},
     folder = Instance.new("Folder"),
     hasDrawingAPI = false,
 }
@@ -1300,9 +1405,7 @@ end)
 
 local function getESPColor()
     local a = Theme.Accent
-    if luminance(a) < 0.25 then
-        return offsetRGB(a, 150, 150, 150)
-    end
+    if luminance(a) < 0.25 then return offsetRGB(a, 150, 150, 150) end
     return a
 end
 
@@ -1477,23 +1580,13 @@ end)
 --  MOVEMENT & CHARACTER STATE
 -- ============================================================
 local cmdState = {
-    noclipEnabled = false,
-    invisEnabled = false,
-    followTarget = nil,
-    noclipConn = nil,
-    invisConn = nil,
-    followConn = nil,
-    fullbrightEnabled = false,
-    lightingBackup = nil,
+    noclipEnabled = false, invisEnabled = false, followTarget = nil,
+    noclipConn = nil, invisConn = nil, followConn = nil,
+    fullbrightEnabled = false, lightingBackup = nil,
 }
 
 local function createFlyController()
-    local state = {
-        enabled = false,
-        bv = nil,
-        bg = nil,
-        conn = nil,
-    }
+    local state = { enabled = false, bv = nil, bg = nil, conn = nil }
     local function setOn(on)
         state.enabled = on and true or false
         local char = player.Character
@@ -1567,6 +1660,7 @@ local function applyInvis(char)
         elseif d:IsA("Decal") then d.Transparency = 1 end
     end
 end
+
 local function setInvis(on)
     cmdState.invisEnabled = on and true or false
     if cmdState.invisConn then cmdState.invisConn:Disconnect(); cmdState.invisConn = nil end
@@ -1601,7 +1695,7 @@ local function setFollow(target)
 end
 
 -- ============================================================
---  MOVEMENT / CHARACTER COMMANDS
+--  COMMAND REGISTRATIONS
 -- ============================================================
 registerCommand("goto", function(args)
     if #args == 0 then return false, "Usage: goto <player>" end
@@ -1681,15 +1775,10 @@ registerCommand("unfly", function()
     local wasToggleFly = toggleFlyState.enabled
     setFly(false)
     setToggleFly(false)
-    if wasFly and wasToggleFly then
-        return true, "Fly and ToggleFly disabled"
-    elseif wasToggleFly then
-        return true, "ToggleFly disabled"
-    elseif wasFly then
-        return true, "Fly disabled"
-    else
-        return true, "Fly already disabled"
-    end
+    if wasFly and wasToggleFly then return true, "Fly and ToggleFly disabled"
+    elseif wasToggleFly then return true, "ToggleFly disabled"
+    elseif wasFly then return true, "Fly disabled"
+    else return true, "Fly already disabled" end
 end)
 
 registerCommand("togglefly", function()
@@ -1736,12 +1825,9 @@ end, { "fovr" })
 registerCommand("fullbright", function()
     if not cmdState.fullbrightEnabled then
         cmdState.lightingBackup = {
-            Brightness      = Lighting.Brightness,
-            ClockTime       = Lighting.ClockTime,
-            FogEnd          = Lighting.FogEnd,
-            GlobalShadows   = Lighting.GlobalShadows,
-            Ambient         = Lighting.Ambient,
-            OutdoorAmbient  = Lighting.OutdoorAmbient,
+            Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime,
+            FogEnd = Lighting.FogEnd, GlobalShadows = Lighting.GlobalShadows,
+            Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient,
         }
         Lighting.Brightness     = 3
         Lighting.ClockTime      = 14
@@ -1784,9 +1870,7 @@ end, { "rs", "rst" })
 registerCommand("rejoin", function()
     if not game.JobId or game.JobId == "" then return false, "Not in a multiplayer server" end
     task.spawn(function()
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player)
-        end)
+        pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, player) end)
     end)
     return true, "Rejoining..."
 end, { "rj" })
@@ -1807,9 +1891,7 @@ registerCommand("serverhop", function()
         end
         if #candidates == 0 then return end
         local chosen = candidates[math.random(#candidates)]
-        pcall(function()
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, chosen.id, player)
-        end)
+        pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, chosen.id, player) end)
     end)
     return true, "Searching for a new server..."
 end, { "sh", "hop", "shop" })
@@ -1847,7 +1929,7 @@ local function parseAndRun(input)
 end
 
 -- ============================================================
---  COMMAND BAR
+--  COMMAND BAR UI
 -- ============================================================
 ui.floatBar = Instance.new("Frame")
 ui.floatBar.Name = "FloatingCommandBar"
@@ -1861,9 +1943,9 @@ ui.floatBar.Visible = false
 ui.floatBar.ZIndex = 100
 ui.floatBar.Parent = floatGui
 
-ui.floatBarCorner = Instance.new("UICorner")
-ui.floatBarCorner.CornerRadius = UDim.new(0, 8)
-ui.floatBarCorner.Parent = ui.floatBar
+local fbc = Instance.new("UICorner")
+fbc.CornerRadius = UDim.new(0, 8)
+fbc.Parent = ui.floatBar
 
 ui.floatBarGradient = Instance.new("UIGradient")
 ui.floatBarGradient.Color = ColorSequence.new({
@@ -1908,9 +1990,6 @@ ui.floatBox.TextXAlignment = Enum.TextXAlignment.Left
 ui.floatBox.ZIndex = 101
 ui.floatBox.Parent = ui.floatBar
 
--- ============================================================
---  COMMAND SUGGESTIONS
--- ============================================================
 local MAX_SUGGESTIONS = 8
 
 ui.floatSuggest = Instance.new("Frame")
@@ -1925,9 +2004,9 @@ ui.floatSuggest.Visible = false
 ui.floatSuggest.ZIndex = 99
 ui.floatSuggest.Parent = floatGui
 
-ui.floatSuggestCorner = Instance.new("UICorner")
-ui.floatSuggestCorner.CornerRadius = UDim.new(0, 8)
-ui.floatSuggestCorner.Parent = ui.floatSuggest
+local fsc = Instance.new("UICorner")
+fsc.CornerRadius = UDim.new(0, 8)
+fsc.Parent = ui.floatSuggest
 
 ui.floatSuggestGradient = Instance.new("UIGradient")
 ui.floatSuggestGradient.Color = ColorSequence.new({
@@ -1987,28 +2066,17 @@ local function getHighlightColor()
     local textLum = luminance(Theme.Text)
     local accLum = luminance(a)
     if math.abs(accLum - textLum) < 0.25 then
-        if textLum > 0.5 then
-            return offsetRGB(a, -120, -120, -120)
-        else
-            return offsetRGB(a, 120, 120, 120)
-        end
+        if textLum > 0.5 then return offsetRGB(a, -120, -120, -120)
+        else return offsetRGB(a, 120, 120, 120) end
     end
     return a
 end
 
 local function updateSuggestions(text)
     clearSuggestions()
-
     local trimmed = text:gsub("^[;%s]+", "")
-    if trimmed == "" then
-        hideSuggestions()
-        return
-    end
-
-    if trimmed:find("%s") then
-        hideSuggestions()
-        return
-    end
+    if trimmed == "" then hideSuggestions(); return end
+    if trimmed:find("%s") then hideSuggestions(); return end
 
     local lc = trimmed:lower()
     local matches = {}
@@ -2017,12 +2085,7 @@ local function updateSuggestions(text)
     for canonical in pairs(commandDefs) do
         local startIdx = canonical:lower():find(lc, 1, true)
         if startIdx then
-            matches[#matches + 1] = {
-                name = canonical,
-                via = nil,
-                matchStart = startIdx,
-                matchLen = #lc,
-            }
+            matches[#matches + 1] = { name = canonical, via = nil, matchStart = startIdx, matchLen = #lc }
             seenCanonical[canonical] = true
         end
     end
@@ -2030,21 +2093,13 @@ local function updateSuggestions(text)
     for alias, canonical in pairs(commandAliases) do
         if alias ~= canonical and not seenCanonical[canonical] then
             if alias:lower():find(lc, 1, true) then
-                matches[#matches + 1] = {
-                    name = canonical,
-                    via = alias,
-                    matchStart = nil,
-                    matchLen = #lc,
-                }
+                matches[#matches + 1] = { name = canonical, via = alias, matchStart = nil, matchLen = #lc }
                 seenCanonical[canonical] = true
             end
         end
     end
 
-    if #matches == 0 then
-        hideSuggestions()
-        return
-    end
+    if #matches == 0 then hideSuggestions(); return end
 
     table.sort(matches, function(a, b)
         local aIsName = a.via == nil
@@ -2059,8 +2114,8 @@ local function updateSuggestions(text)
     end)
 
     local hlHex = color3ToHex(getHighlightColor())
-
     local shown = 0
+
     for _, m in ipairs(matches) do
         shown = shown + 1
         if shown > MAX_SUGGESTIONS then break end
@@ -2092,9 +2147,9 @@ local function updateSuggestions(text)
         nameLbl.Parent = row
 
         if m.matchStart then
-            local before     = m.name:sub(1, m.matchStart - 1)
-            local matchText  = m.name:sub(m.matchStart, m.matchStart + m.matchLen - 1)
-            local after      = m.name:sub(m.matchStart + m.matchLen)
+            local before    = m.name:sub(1, m.matchStart - 1)
+            local matchText = m.name:sub(m.matchStart, m.matchStart + m.matchLen - 1)
+            local after     = m.name:sub(m.matchStart + m.matchLen)
             nameLbl.Text = before .. '<font color="#' .. hlHex .. '">' .. matchText .. '</font>' .. after
         else
             nameLbl.Text = m.name
@@ -2133,16 +2188,9 @@ local function updateSuggestions(text)
             aliasLbl.Parent = row
         end
 
-        row.MouseEnter:Connect(function()
-            row.BackgroundTransparency = 0.85
-        end)
-        row.MouseLeave:Connect(function()
-            row.BackgroundTransparency = 1
-        end)
-        row.MouseButton1Click:Connect(function()
-            pickSuggestion(m.name)
-        end)
-
+        row.MouseEnter:Connect(function() row.BackgroundTransparency = 0.85 end)
+        row.MouseLeave:Connect(function() row.BackgroundTransparency = 1 end)
+        row.MouseButton1Click:Connect(function() pickSuggestion(m.name) end)
         table.insert(suggestRows, row)
     end
 
@@ -2256,16 +2304,6 @@ commandsContent.BackgroundTransparency = 1
 commandsContent.AutomaticSize = Enum.AutomaticSize.Y
 commandsContent.Parent = commandsPage
 
-local commandsLayout = Instance.new("UIListLayout")
-commandsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-commandsLayout.Padding = UDim.new(0, 8)
-commandsLayout.Parent = commandsContent
-
-local commandsPadding = Instance.new("UIPadding")
-commandsPadding.PaddingLeft = UDim.new(0, 2)
-commandsPadding.PaddingRight = UDim.new(0, 2)
-commandsPadding.Parent = commandsContent
-
 local commandListFrame = Instance.new("Frame")
 commandListFrame.Size = UDim2.new(1, 0, 0, 0)
 commandListFrame.BackgroundTransparency = 1
@@ -2278,7 +2316,6 @@ commandListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 commandListLayout.Padding = UDim.new(0, 8)
 commandListLayout.Parent = commandListFrame
 
-local commandListTexts = {}
 local commandListCount = 0
 
 local function addCommandHelp(displayName, usageText)
@@ -2342,40 +2379,40 @@ end)
 -- ============================================================
 --  THEMES PAGE
 -- ============================================================
-local themeHeading = Instance.new("TextLabel")
-themeHeading.Size = UDim2.new(1, 0, 0, 16)
-themeHeading.Position = UDim2.new(0, 0, 0, 30)
-themeHeading.BackgroundTransparency = 1
-themeHeading.Text = "THEMES"
-themeHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
-themeHeading.TextSize = 11
-themeHeading.Font = Enum.Font.GothamBold
-themeHeading.TextXAlignment = Enum.TextXAlignment.Left
-themeHeading.Parent = themesPage
+ui.themeHeading = Instance.new("TextLabel")
+ui.themeHeading.Size = UDim2.new(1, 0, 0, 16)
+ui.themeHeading.Position = UDim2.new(0, 0, 0, 30)
+ui.themeHeading.BackgroundTransparency = 1
+ui.themeHeading.Text = "THEMES"
+ui.themeHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
+ui.themeHeading.TextSize = 11
+ui.themeHeading.Font = Enum.Font.GothamBold
+ui.themeHeading.TextXAlignment = Enum.TextXAlignment.Left
+ui.themeHeading.Parent = themesPage
 
-local themeSubtitle = Instance.new("TextLabel")
-themeSubtitle.Size = UDim2.new(1, 0, 0, 16)
-themeSubtitle.Position = UDim2.new(0, 0, 0, 50)
-themeSubtitle.BackgroundTransparency = 1
-themeSubtitle.Text = "Pick a colour scheme for the interface."
-themeSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
-themeSubtitle.TextSize = 11
-themeSubtitle.Font = Enum.Font.Gotham
-themeSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-themeSubtitle.Parent = themesPage
+ui.themeSubtitle = Instance.new("TextLabel")
+ui.themeSubtitle.Size = UDim2.new(1, 0, 0, 16)
+ui.themeSubtitle.Position = UDim2.new(0, 0, 0, 50)
+ui.themeSubtitle.BackgroundTransparency = 1
+ui.themeSubtitle.Text = "Pick a colour scheme for the interface."
+ui.themeSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
+ui.themeSubtitle.TextSize = 11
+ui.themeSubtitle.Font = Enum.Font.Gotham
+ui.themeSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+ui.themeSubtitle.Parent = themesPage
 
-local persistenceNote = Instance.new("TextLabel")
-persistenceNote.Size = UDim2.new(1, 0, 0, 14)
-persistenceNote.Position = UDim2.new(0, 0, 0, 64)
-persistenceNote.BackgroundTransparency = 1
-persistenceNote.Text = hasFileAPI
+ui.persistenceNote = Instance.new("TextLabel")
+ui.persistenceNote.Size = UDim2.new(1, 0, 0, 14)
+ui.persistenceNote.Position = UDim2.new(0, 0, 0, 64)
+ui.persistenceNote.BackgroundTransparency = 1
+ui.persistenceNote.Text = hasFileAPI
     and "Your theme preference is saved locally and applied on next execution."
     or "Note: Your executor does not support saving preferences."
-persistenceNote.TextColor3 = Color3.fromRGB(140, 140, 165)
-persistenceNote.TextSize = 10
-persistenceNote.Font = Enum.Font.Gotham
-persistenceNote.TextXAlignment = Enum.TextXAlignment.Left
-persistenceNote.Parent = themesPage
+ui.persistenceNote.TextColor3 = Color3.fromRGB(140, 140, 165)
+ui.persistenceNote.TextSize = 10
+ui.persistenceNote.Font = Enum.Font.Gotham
+ui.persistenceNote.TextXAlignment = Enum.TextXAlignment.Left
+ui.persistenceNote.Parent = themesPage
 
 local contentWrapper = Instance.new("Frame")
 contentWrapper.Size = UDim2.new(1, 0, 0, 0)
@@ -2398,8 +2435,6 @@ wrapperLayout.Padding = UDim.new(0, 14)
 wrapperLayout.Parent = contentWrapper
 
 local CELL_W, CELL_H, CELL_PAD = 185, 58, 10
-local themeSwatches = {}
-local themeSectionHeadings = {}
 
 local function createSwatch(grid, themeName, orderIndex)
     local data = Themes[themeName]
@@ -2476,6 +2511,48 @@ local function createSwatch(grid, themeName, orderIndex)
     end)
 end
 
+local function createCollapsibleHeader(section, titleText)
+    local headerBtn = Instance.new("TextButton")
+    headerBtn.Name = "Header"
+    headerBtn.Size = UDim2.new(1, 0, 0, 20)
+    headerBtn.BackgroundTransparency = 1
+    headerBtn.Text = ""
+    headerBtn.AutoButtonColor = false
+    headerBtn.BorderSizePixel = 0
+    headerBtn.LayoutOrder = 1
+    headerBtn.Parent = section
+
+    local chevron = Instance.new("TextLabel")
+    chevron.Name = "Chevron"
+    chevron.Size = UDim2.new(0, 12, 0, 12)
+    chevron.Position = UDim2.new(0, 10, 0.5, 0)
+    chevron.AnchorPoint = Vector2.new(0.5, 0.5)
+    chevron.BackgroundTransparency = 1
+    chevron.Text = "▼"
+    chevron.TextColor3 = Color3.fromRGB(235, 235, 245)
+    chevron.TextSize = 10
+    chevron.Font = Enum.Font.GothamBold
+    chevron.Parent = headerBtn
+
+    table.insert(themeSectionChevrons, chevron)
+
+    local heading = Instance.new("TextLabel")
+    heading.Name = "Label"
+    heading.Size = UDim2.new(1, -24, 1, 0)
+    heading.Position = UDim2.new(0, 20, 0, 0)
+    heading.BackgroundTransparency = 1
+    heading.Text = titleText
+    heading.TextColor3 = Color3.fromRGB(235, 235, 245)
+    heading.TextSize = 12
+    heading.Font = Enum.Font.GothamBold
+    heading.TextXAlignment = Enum.TextXAlignment.Left
+    heading.Parent = headerBtn
+
+    table.insert(themeSectionHeadings, heading)
+
+    return headerBtn, chevron
+end
+
 local function createThemeSection(parent, titleText, themeList, layoutOrder)
     local section = Instance.new("Frame")
     section.Size = UDim2.new(1, 0, 0, 0)
@@ -2490,20 +2567,10 @@ local function createThemeSection(parent, titleText, themeList, layoutOrder)
     sectionLayout.Padding = UDim.new(0, 8)
     sectionLayout.Parent = section
 
-    local heading = Instance.new("TextLabel")
-    heading.Size = UDim2.new(1, 0, 0, 16)
-    heading.BackgroundTransparency = 1
-    heading.Text = titleText
-    heading.TextColor3 = Color3.fromRGB(235, 235, 245)
-    heading.TextSize = 12
-    heading.Font = Enum.Font.GothamBold
-    heading.TextXAlignment = Enum.TextXAlignment.Left
-    heading.LayoutOrder = 1
-    heading.Parent = section
-
-    table.insert(themeSectionHeadings, heading)
+    local headerBtn, chevron = createCollapsibleHeader(section, titleText)
 
     local grid = Instance.new("Frame")
+    grid.Name = "Grid"
     grid.Size = UDim2.new(1, 0, 0, 0)
     grid.BackgroundTransparency = 1
     grid.LayoutOrder = 2
@@ -2519,59 +2586,207 @@ local function createThemeSection(parent, titleText, themeList, layoutOrder)
     for i, themeName in ipairs(themeList) do
         createSwatch(grid, themeName, i)
     end
+
+    local expanded = false
+
+    local function render(animate)
+        grid.Visible = expanded
+        local targetRot = expanded and 0 or -90
+        if animate then
+            TweenService:Create(chevron, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Rotation = targetRot }):Play()
+        else
+            chevron.Rotation = targetRot
+        end
+    end
+
+    headerBtn.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        render(true)
+    end)
+
+    render(false)
+end
+
+local function createParticleSection(parent, titleText, layoutOrder)
+    local section = Instance.new("Frame")
+    section.Size = UDim2.new(1, 0, 0, 0)
+    section.BackgroundTransparency = 1
+    section.AutomaticSize = Enum.AutomaticSize.Y
+    section.LayoutOrder = layoutOrder
+    section.Parent = parent
+
+    local sectionLayout = Instance.new("UIListLayout")
+    sectionLayout.FillDirection = Enum.FillDirection.Vertical
+    sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    sectionLayout.Padding = UDim.new(0, 8)
+    sectionLayout.Parent = section
+
+    local headerBtn, chevron = createCollapsibleHeader(section, titleText)
+
+    local optionsContainer = Instance.new("Frame")
+    optionsContainer.Size = UDim2.new(1, 0, 0, 0)
+    optionsContainer.BackgroundTransparency = 1
+    optionsContainer.LayoutOrder = 2
+    optionsContainer.AutomaticSize = Enum.AutomaticSize.Y
+    optionsContainer.Parent = section
+
+    local optionsLayout = Instance.new("UIListLayout")
+    optionsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    optionsLayout.Padding = UDim.new(0, 4)
+    optionsLayout.Parent = optionsContainer
+
+    for i, styleName in ipairs(particleStyleOrder) do
+        local optBtn = Instance.new("TextButton")
+        optBtn.Name = styleName .. "Option"
+        optBtn.Size = UDim2.new(1, 0, 0, 32)
+        optBtn.BackgroundColor3 = Theme.Content
+        optBtn.BackgroundTransparency = 0.5
+        optBtn.Text = ""
+        optBtn.AutoButtonColor = false
+        optBtn.BorderSizePixel = 0
+        optBtn.LayoutOrder = i
+        optBtn.Parent = optionsContainer
+
+        local optCorner = Instance.new("UICorner")
+        optCorner.CornerRadius = UDim.new(0, 6)
+        optCorner.Parent = optBtn
+
+        local optStroke = Instance.new("UIStroke")
+        optStroke.Color = Theme.AccentSoft
+        optStroke.Thickness = 1
+        optStroke.Transparency = 0.7
+        optStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        optStroke.Parent = optBtn
+
+        local optLabel = Instance.new("TextLabel")
+        optLabel.Size = UDim2.new(1, -40, 1, 0)
+        optLabel.Position = UDim2.new(0, 12, 0, 0)
+        optLabel.BackgroundTransparency = 1
+        optLabel.Text = particleStyleLabels[styleName]
+        optLabel.TextColor3 = Theme.Text
+        optLabel.TextSize = 12
+        optLabel.Font = Enum.Font.Gotham
+        optLabel.TextXAlignment = Enum.TextXAlignment.Left
+        optLabel.Parent = optBtn
+
+        local optDot = Instance.new("Frame")
+        optDot.Size = UDim2.new(0, 8, 0, 8)
+        optDot.Position = UDim2.new(1, -16, 0.5, 0)
+        optDot.AnchorPoint = Vector2.new(1, 0.5)
+        optDot.BackgroundColor3 = Theme.Accent
+        optDot.BorderSizePixel = 0
+        optDot.Visible = (styleName == particleStyle)
+        optDot.Parent = optBtn
+
+        local optDotCorner = Instance.new("UICorner")
+        optDotCorner.CornerRadius = UDim.new(1, 0)
+        optDotCorner.Parent = optDot
+
+        local isActive = (styleName == particleStyle)
+        optStroke.Color = isActive and Theme.Accent or Theme.AccentSoft
+        optStroke.Transparency = isActive and 0 or 0.7
+
+        particleOptionRegistries[styleName] = {
+            button = optBtn, stroke = optStroke, label = optLabel, dot = optDot,
+        }
+
+        optBtn.MouseButton1Click:Connect(function()
+            if particleStyle == styleName then return end
+            particleStyle = styleName
+            saveConfig({ particleStyle = styleName })
+            for sn, entry in pairs(particleOptionRegistries) do
+                local active = (sn == styleName)
+                entry.stroke.Color = active and Theme.Accent or Theme.AccentSoft
+                entry.stroke.Transparency = active and 0 or 0.7
+                entry.dot.Visible = active
+            end
+            refreshParticles()
+        end)
+
+        optBtn.MouseEnter:Connect(function()
+            if particleStyle == styleName then return end
+            TweenService:Create(optStroke, TweenInfo.new(0.15), { Transparency = 0.4 }):Play()
+        end)
+        optBtn.MouseLeave:Connect(function()
+            if particleStyle == styleName then return end
+            TweenService:Create(optStroke, TweenInfo.new(0.15), { Transparency = 0.7 }):Play()
+        end)
+    end
+
+    local expanded = false
+
+    local function render(animate)
+        optionsContainer.Visible = expanded
+        local targetRot = expanded and 0 or -90
+        if animate then
+            TweenService:Create(chevron, TweenInfo.new(0.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Rotation = targetRot }):Play()
+        else
+            chevron.Rotation = targetRot
+        end
+    end
+
+    headerBtn.MouseButton1Click:Connect(function()
+        expanded = not expanded
+        render(true)
+    end)
+
+    render(false)
 end
 
 createThemeSection(contentWrapper, "Originals", OriginalThemeOrder, 1)
 createThemeSection(contentWrapper, "Dark Themes", DarkThemeOrder, 2)
 createThemeSection(contentWrapper, "Light Themes", LightThemeOrder, 3)
+createParticleSection(contentWrapper, "Background Particles", 4)
 
-local customPanel = Instance.new("Frame")
-customPanel.Size = UDim2.new(0, CUSTOM_PANEL_W, 0, 184)
-customPanel.LayoutOrder = 4
-customPanel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-customPanel.BorderSizePixel = 0
-customPanel.Parent = contentWrapper
+-- Custom colours panel
+local cp = {}
+cp.panel = Instance.new("Frame")
+cp.panel.Size = UDim2.new(0, CFG.customPanelW, 0, 184)
+cp.panel.LayoutOrder = 5
+cp.panel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+cp.panel.BorderSizePixel = 0
+cp.panel.Parent = contentWrapper
 
-local customPanelCorner = Instance.new("UICorner")
-customPanelCorner.CornerRadius = UDim.new(0, 10)
-customPanelCorner.Parent = customPanel
+local cpc = Instance.new("UICorner")
+cpc.CornerRadius = UDim.new(0, 10)
+cpc.Parent = cp.panel
 
-local customPanelGradient = Instance.new("UIGradient")
-customPanelGradient.Rotation = 135
-customPanelGradient.Color = ColorSequence.new({
+cp.gradient = Instance.new("UIGradient")
+cp.gradient.Rotation = 135
+cp.gradient.Color = ColorSequence.new({
     ColorSequenceKeypoint.new(0, Theme.PanelTop),
     ColorSequenceKeypoint.new(1, Theme.PanelBottom),
 })
-customPanelGradient.Parent = customPanel
+cp.gradient.Parent = cp.panel
 
-local customPanelStroke = Instance.new("UIStroke")
-customPanelStroke.Color = Theme.AccentSoft
-customPanelStroke.Thickness = 1
-customPanelStroke.Transparency = 0.5
-customPanelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-customPanelStroke.Parent = customPanel
+cp.stroke = Instance.new("UIStroke")
+cp.stroke.Color = Theme.AccentSoft
+cp.stroke.Thickness = 1
+cp.stroke.Transparency = 0.5
+cp.stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+cp.stroke.Parent = cp.panel
 
-local customHeading = Instance.new("TextLabel")
-customHeading.Size = UDim2.new(1, -28, 0, 16)
-customHeading.Position = UDim2.new(0, 14, 0, 12)
-customHeading.BackgroundTransparency = 1
-customHeading.Text = "CUSTOM COLOURS"
-customHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
-customHeading.TextSize = 11
-customHeading.Font = Enum.Font.GothamBold
-customHeading.TextXAlignment = Enum.TextXAlignment.Left
-customHeading.Parent = customPanel
+cp.heading = Instance.new("TextLabel")
+cp.heading.Size = UDim2.new(1, -28, 0, 16)
+cp.heading.Position = UDim2.new(0, 14, 0, 12)
+cp.heading.BackgroundTransparency = 1
+cp.heading.Text = "CUSTOM COLOURS"
+cp.heading.TextColor3 = Color3.fromRGB(160, 160, 185)
+cp.heading.TextSize = 11
+cp.heading.Font = Enum.Font.GothamBold
+cp.heading.TextXAlignment = Enum.TextXAlignment.Left
+cp.heading.Parent = cp.panel
 
-local customSubtitle = Instance.new("TextLabel")
-customSubtitle.Size = UDim2.new(1, -28, 0, 16)
-customSubtitle.Position = UDim2.new(0, 14, 0, 32)
-customSubtitle.BackgroundTransparency = 1
-customSubtitle.Text = "Enter RGB values (0-255) to build your own palette."
-customSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
-customSubtitle.TextSize = 10
-customSubtitle.Font = Enum.Font.Gotham
-customSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-customSubtitle.Parent = customPanel
+cp.subtitle = Instance.new("TextLabel")
+cp.subtitle.Size = UDim2.new(1, -28, 0, 16)
+cp.subtitle.Position = UDim2.new(0, 14, 0, 32)
+cp.subtitle.BackgroundTransparency = 1
+cp.subtitle.Text = "Enter RGB values (0-255) to build your own palette."
+cp.subtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
+cp.subtitle.TextSize = 10
+cp.subtitle.Font = Enum.Font.Gotham
+cp.subtitle.TextXAlignment = Enum.TextXAlignment.Left
+cp.subtitle.Parent = cp.panel
 
 local function stripLeadingZeros(box)
     local text = box.Text
@@ -2589,7 +2804,7 @@ local function makeRGBRow(yOffset, labelText)
     rowLabel.TextSize = 12
     rowLabel.Font = Enum.Font.Gotham
     rowLabel.TextXAlignment = Enum.TextXAlignment.Left
-    rowLabel.Parent = customPanel
+    rowLabel.Parent = cp.panel
 
     local boxes = {}
     local placeholders = { "R", "G", "B" }
@@ -2608,7 +2823,7 @@ local function makeRGBRow(yOffset, labelText)
         box.ClearTextOnFocus = true
         box.BorderSizePixel = 0
         box.TextXAlignment = Enum.TextXAlignment.Center
-        box.Parent = customPanel
+        box.Parent = cp.panel
 
         local c = Instance.new("UICorner")
         c.CornerRadius = UDim.new(0, 4)
@@ -2630,31 +2845,31 @@ local function makeRGBRow(yOffset, labelText)
     return rowLabel, boxes
 end
 
-local bgRowLabel, bgBoxes = makeRGBRow(60, "Background")
-local accentRowLabel, accentBoxes = makeRGBRow(96, "Accent")
+cp.bgRowLabel, cp.bgBoxes = makeRGBRow(60, "Background")
+cp.accentRowLabel, cp.accentBoxes = makeRGBRow(96, "Accent")
 
-local applyBtn = Instance.new("TextButton")
-applyBtn.Size = UDim2.new(0, 267, 0, 32)
-applyBtn.Position = UDim2.new(0, 14, 0, 138)
-applyBtn.BackgroundColor3 = Theme.Accent
-applyBtn.Text = "Apply"
-applyBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
-applyBtn.TextSize = 12
-applyBtn.Font = Enum.Font.GothamBold
-applyBtn.BorderSizePixel = 0
-applyBtn.AutoButtonColor = false
-applyBtn.Parent = customPanel
+cp.applyBtn = Instance.new("TextButton")
+cp.applyBtn.Size = UDim2.new(0, 267, 0, 32)
+cp.applyBtn.Position = UDim2.new(0, 14, 0, 138)
+cp.applyBtn.BackgroundColor3 = Theme.Accent
+cp.applyBtn.Text = "Apply"
+cp.applyBtn.TextColor3 = Color3.fromRGB(235, 235, 245)
+cp.applyBtn.TextSize = 12
+cp.applyBtn.Font = Enum.Font.GothamBold
+cp.applyBtn.BorderSizePixel = 0
+cp.applyBtn.AutoButtonColor = false
+cp.applyBtn.Parent = cp.panel
 
-local applyBtnCorner = Instance.new("UICorner")
-applyBtnCorner.CornerRadius = UDim.new(0, 6)
-applyBtnCorner.Parent = applyBtn
+local cpab = Instance.new("UICorner")
+cpab.CornerRadius = UDim.new(0, 6)
+cpab.Parent = cp.applyBtn
 
-local applyBtnStroke = Instance.new("UIStroke")
-applyBtnStroke.Color = Theme.AccentSoft
-applyBtnStroke.Thickness = 1
-applyBtnStroke.Transparency = 0.4
-applyBtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-applyBtnStroke.Parent = applyBtn
+cp.applyBtnStroke = Instance.new("UIStroke")
+cp.applyBtnStroke.Color = Theme.AccentSoft
+cp.applyBtnStroke.Thickness = 1
+cp.applyBtnStroke.Transparency = 0.4
+cp.applyBtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+cp.applyBtnStroke.Parent = cp.applyBtn
 
 local function parseRGB(boxes)
     local r = tonumber(boxes[1].Text)
@@ -2668,40 +2883,40 @@ local function parseRGB(boxes)
 end
 
 local function updatePreview()
-    local bg = parseRGB(bgBoxes)
-    local accent = parseRGB(accentBoxes)
+    local bg = parseRGB(cp.bgBoxes)
+    local accent = parseRGB(cp.accentBoxes)
     if not bg or not accent then
-        customPanelGradient.Color = ColorSequence.new({
+        cp.gradient.Color = ColorSequence.new({
             ColorSequenceKeypoint.new(0, Theme.PanelTop),
             ColorSequenceKeypoint.new(1, Theme.PanelBottom),
         })
-        customPanelStroke.Color = Theme.AccentSoft
-        applyBtn.BackgroundColor3 = Theme.Accent
+        cp.stroke.Color = Theme.AccentSoft
+        cp.applyBtn.BackgroundColor3 = Theme.Accent
         return
     end
     local pal = buildCustomPalette(bg, accent)
-    customPanelGradient.Color = ColorSequence.new({
+    cp.gradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, pal.PanelTop),
         ColorSequenceKeypoint.new(1, pal.PanelBottom),
     })
-    customPanelStroke.Color = pal.Accent
-    applyBtn.BackgroundColor3 = pal.Accent
+    cp.stroke.Color = pal.Accent
+    cp.applyBtn.BackgroundColor3 = pal.Accent
 end
 
-for _, box in ipairs(bgBoxes) do
+for _, box in ipairs(cp.bgBoxes) do
     box:GetPropertyChangedSignal("Text"):Connect(updatePreview)
 end
-for _, box in ipairs(accentBoxes) do
+for _, box in ipairs(cp.accentBoxes) do
     box:GetPropertyChangedSignal("Text"):Connect(updatePreview)
 end
 
-applyBtn.MouseButton1Click:Connect(function()
-    local bg = parseRGB(bgBoxes)
-    local accent = parseRGB(accentBoxes)
+cp.applyBtn.MouseButton1Click:Connect(function()
+    local bg = parseRGB(cp.bgBoxes)
+    local accent = parseRGB(cp.accentBoxes)
     if not bg or not accent then
-        applyBtn.Text = "Invalid"
+        cp.applyBtn.Text = "Invalid"
         task.wait(0.6)
-        applyBtn.Text = "Apply"
+        cp.applyBtn.Text = "Apply"
         return
     end
     Themes.Custom = buildCustomPalette(bg, accent)
@@ -2715,83 +2930,129 @@ applyBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-applyBtn.MouseEnter:Connect(function()
-    TweenService:Create(applyBtnStroke, TweenInfo.new(0.15), {Transparency = 0}):Play()
+cp.applyBtn.MouseEnter:Connect(function()
+    TweenService:Create(cp.applyBtnStroke, TweenInfo.new(0.15), {Transparency = 0}):Play()
 end)
-applyBtn.MouseLeave:Connect(function()
-    TweenService:Create(applyBtnStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
+cp.applyBtn.MouseLeave:Connect(function()
+    TweenService:Create(cp.applyBtnStroke, TweenInfo.new(0.15), {Transparency = 0.4}):Play()
 end)
+
+ui.customPanel = cp
 
 -- ============================================================
 --  SETTINGS PAGE
 -- ============================================================
-local generalHeading = Instance.new("TextLabel")
-generalHeading.Size = UDim2.new(1, 0, 0, 16)
-generalHeading.Position = UDim2.new(0, 0, 0, 30)
-generalHeading.BackgroundTransparency = 1
-generalHeading.Text = "GENERAL"
-generalHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
-generalHeading.TextSize = 11
-generalHeading.Font = Enum.Font.GothamBold
-generalHeading.TextXAlignment = Enum.TextXAlignment.Left
-generalHeading.Parent = settingsPage
+local st = {}
 
-local hubRow = Instance.new("Frame")
-hubRow.Size = UDim2.new(1, 0, 0, 34)
-hubRow.Position = UDim2.new(0, 0, 0, 52)
-hubRow.BackgroundTransparency = 1
-hubRow.Parent = settingsPage
+st.generalHeading = Instance.new("TextLabel")
+st.generalHeading.Size = UDim2.new(1, 0, 0, 16)
+st.generalHeading.Position = UDim2.new(0, 0, 0, 30)
+st.generalHeading.BackgroundTransparency = 1
+st.generalHeading.Text = "GENERAL"
+st.generalHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
+st.generalHeading.TextSize = 11
+st.generalHeading.Font = Enum.Font.GothamBold
+st.generalHeading.TextXAlignment = Enum.TextXAlignment.Left
+st.generalHeading.Parent = settingsPage
 
-local keybindChangeLabel = Instance.new("TextLabel")
-keybindChangeLabel.Size = UDim2.new(0, 140, 1, 0)
-keybindChangeLabel.BackgroundTransparency = 1
-keybindChangeLabel.Text = "Toggle keybind"
-keybindChangeLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
-keybindChangeLabel.TextSize = 13
-keybindChangeLabel.Font = Enum.Font.Gotham
-keybindChangeLabel.TextXAlignment = Enum.TextXAlignment.Left
-keybindChangeLabel.Parent = hubRow
+st.hubRow = Instance.new("Frame")
+st.hubRow.Size = UDim2.new(1, 0, 0, 34)
+st.hubRow.Position = UDim2.new(0, 0, 0, 52)
+st.hubRow.BackgroundTransparency = 1
+st.hubRow.Parent = settingsPage
 
-local hubKeybindBox = Instance.new("TextButton")
-hubKeybindBox.Name = "HubKeybindBox"
-hubKeybindBox.Size = UDim2.new(0, 90, 0, 28)
-hubKeybindBox.Position = UDim2.new(0, 150, 0.5, 0)
-hubKeybindBox.AnchorPoint = Vector2.new(0, 0.5)
-hubKeybindBox.BackgroundColor3 = Theme.Content
-hubKeybindBox.BackgroundTransparency = 0.3
-hubKeybindBox.TextColor3 = Theme.Text
-hubKeybindBox.TextSize = 12
-hubKeybindBox.Font = Enum.Font.Code
-hubKeybindBox.Text = "F4"
-hubKeybindBox.AutoButtonColor = false
-hubKeybindBox.BorderSizePixel = 0
-hubKeybindBox.TextXAlignment = Enum.TextXAlignment.Center
-hubKeybindBox.Parent = hubRow
+st.keybindChangeLabel = Instance.new("TextLabel")
+st.keybindChangeLabel.Size = UDim2.new(0, 140, 1, 0)
+st.keybindChangeLabel.BackgroundTransparency = 1
+st.keybindChangeLabel.Text = "Toggle keybind"
+st.keybindChangeLabel.TextColor3 = Color3.fromRGB(160, 160, 185)
+st.keybindChangeLabel.TextSize = 13
+st.keybindChangeLabel.Font = Enum.Font.Gotham
+st.keybindChangeLabel.TextXAlignment = Enum.TextXAlignment.Left
+st.keybindChangeLabel.Parent = st.hubRow
 
-local hubKeybindCorner = Instance.new("UICorner")
-hubKeybindCorner.CornerRadius = UDim.new(0, 4)
-hubKeybindCorner.Parent = hubKeybindBox
+st.hubKeybindBox = Instance.new("TextButton")
+st.hubKeybindBox.Name = "HubKeybindBox"
+st.hubKeybindBox.Size = UDim2.new(0, 90, 0, 28)
+st.hubKeybindBox.Position = UDim2.new(0, 150, 0.5, 0)
+st.hubKeybindBox.AnchorPoint = Vector2.new(0, 0.5)
+st.hubKeybindBox.BackgroundColor3 = Theme.Content
+st.hubKeybindBox.BackgroundTransparency = 0.3
+st.hubKeybindBox.TextColor3 = Theme.Text
+st.hubKeybindBox.TextSize = 12
+st.hubKeybindBox.Font = Enum.Font.Code
+st.hubKeybindBox.Text = CFG.defaultKeybind.Name:upper()
+st.hubKeybindBox.AutoButtonColor = false
+st.hubKeybindBox.BorderSizePixel = 0
+st.hubKeybindBox.TextXAlignment = Enum.TextXAlignment.Center
+st.hubKeybindBox.Parent = st.hubRow
 
-local hubKeybindStroke = Instance.new("UIStroke")
-hubKeybindStroke.Color = Theme.AccentSoft
-hubKeybindStroke.Thickness = 1
-hubKeybindStroke.Transparency = 0.6
-hubKeybindStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-hubKeybindStroke.Parent = hubKeybindBox
+local hkc = Instance.new("UICorner")
+hkc.CornerRadius = UDim.new(0, 4)
+hkc.Parent = st.hubKeybindBox
 
-local hubKeyCode = Enum.KeyCode.F4
+st.hubKeybindStroke = Instance.new("UIStroke")
+st.hubKeybindStroke.Color = Theme.AccentSoft
+st.hubKeybindStroke.Thickness = 1
+st.hubKeybindStroke.Transparency = 0.6
+st.hubKeybindStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+st.hubKeybindStroke.Parent = st.hubKeybindBox
+
+st.resetKeybindBtn = Instance.new("TextButton")
+st.resetKeybindBtn.Name = "ResetKeybindButton"
+st.resetKeybindBtn.Size = UDim2.new(0, 60, 0, 28)
+st.resetKeybindBtn.Position = UDim2.new(0, 248, 0.5, 0)
+st.resetKeybindBtn.AnchorPoint = Vector2.new(0, 0.5)
+st.resetKeybindBtn.BackgroundColor3 = Theme.Content
+st.resetKeybindBtn.BackgroundTransparency = 0.3
+st.resetKeybindBtn.TextColor3 = Theme.Text
+st.resetKeybindBtn.TextSize = 12
+st.resetKeybindBtn.Font = Enum.Font.Code
+st.resetKeybindBtn.Text = "Reset"
+st.resetKeybindBtn.AutoButtonColor = false
+st.resetKeybindBtn.BorderSizePixel = 0
+st.resetKeybindBtn.TextXAlignment = Enum.TextXAlignment.Center
+st.resetKeybindBtn.Parent = st.hubRow
+
+local rkc = Instance.new("UICorner")
+rkc.CornerRadius = UDim.new(0, 4)
+rkc.Parent = st.resetKeybindBtn
+
+st.resetKeybindStroke = Instance.new("UIStroke")
+st.resetKeybindStroke.Color = Theme.AccentSoft
+st.resetKeybindStroke.Thickness = 1
+st.resetKeybindStroke.Transparency = 0.6
+st.resetKeybindStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+st.resetKeybindStroke.Parent = st.resetKeybindBtn
+
+local hubKeyCode = CFG.defaultKeybind
 if savedConfig and type(savedConfig.keybind) == "string" then
     local code = Enum.KeyCode[savedConfig.keybind]
     if code then hubKeyCode = code end
 end
-hubKeybindBox.Text = hubKeyCode.Name:upper()
+st.hubKeybindBox.Text = hubKeyCode.Name:upper()
 
 local capturingKeybind = false
 
-hubKeybindBox.MouseButton1Click:Connect(function()
+st.hubKeybindBox.MouseButton1Click:Connect(function()
     capturingKeybind = true
-    hubKeybindBox.Text = "PRESS KEY..."
-    hubKeybindBox.TextColor3 = Theme.Accent
+    st.hubKeybindBox.Text = "PRESS KEY..."
+    st.hubKeybindBox.TextColor3 = Theme.Accent
+end)
+
+st.resetKeybindBtn.MouseButton1Click:Connect(function()
+    capturingKeybind = false
+    hubKeyCode = CFG.defaultKeybind
+    st.hubKeybindBox.Text = CFG.defaultKeybind.Name:upper()
+    st.hubKeybindBox.TextColor3 = Theme.Text
+    saveConfig({ keybind = CFG.defaultKeybind.Name })
+end)
+
+st.resetKeybindBtn.MouseEnter:Connect(function()
+    TweenService:Create(st.resetKeybindStroke, TweenInfo.new(0.15), { Transparency = 0.2 }):Play()
+end)
+st.resetKeybindBtn.MouseLeave:Connect(function()
+    TweenService:Create(st.resetKeybindStroke, TweenInfo.new(0.15), { Transparency = 0.6 }):Play()
 end)
 
 UserInputService.InputBegan:Connect(function(input)
@@ -2800,78 +3061,78 @@ UserInputService.InputBegan:Connect(function(input)
     if kc == Enum.KeyCode.Unknown then return end
     if kc == Enum.KeyCode.Escape then
         capturingKeybind = false
-        hubKeybindBox.Text = hubKeyCode.Name:upper()
-        hubKeybindBox.TextColor3 = Theme.Text
+        st.hubKeybindBox.Text = hubKeyCode.Name:upper()
+        st.hubKeybindBox.TextColor3 = Theme.Text
         return
     end
     hubKeyCode = kc
-    hubKeybindBox.Text = kc.Name:upper()
-    hubKeybindBox.TextColor3 = Theme.Text
+    st.hubKeybindBox.Text = kc.Name:upper()
+    st.hubKeybindBox.TextColor3 = Theme.Text
     saveConfig({ keybind = kc.Name })
     task.defer(function() capturingKeybind = false end)
 end)
 
--- ==== Player info ====
-local playerInfoHeading = Instance.new("TextLabel")
-playerInfoHeading.Size = UDim2.new(1, 0, 0, 16)
-playerInfoHeading.Position = UDim2.new(0, 0, 0, 100)
-playerInfoHeading.BackgroundTransparency = 1
-playerInfoHeading.Text = "PLAYER INFO"
-playerInfoHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
-playerInfoHeading.TextSize = 11
-playerInfoHeading.Font = Enum.Font.GothamBold
-playerInfoHeading.TextXAlignment = Enum.TextXAlignment.Left
-playerInfoHeading.Parent = settingsPage
+-- Player info
+st.playerInfoHeading = Instance.new("TextLabel")
+st.playerInfoHeading.Size = UDim2.new(1, 0, 0, 16)
+st.playerInfoHeading.Position = UDim2.new(0, 0, 0, 100)
+st.playerInfoHeading.BackgroundTransparency = 1
+st.playerInfoHeading.Text = "PLAYER INFO"
+st.playerInfoHeading.TextColor3 = Color3.fromRGB(160, 160, 185)
+st.playerInfoHeading.TextSize = 11
+st.playerInfoHeading.Font = Enum.Font.GothamBold
+st.playerInfoHeading.TextXAlignment = Enum.TextXAlignment.Left
+st.playerInfoHeading.Parent = settingsPage
 
-local playerInfoSubtitle = Instance.new("TextLabel")
-playerInfoSubtitle.Size = UDim2.new(1, 0, 0, 16)
-playerInfoSubtitle.Position = UDim2.new(0, 0, 0, 118)
-playerInfoSubtitle.BackgroundTransparency = 1
-playerInfoSubtitle.Text = "Toggle below to inspect players by clicking on them in-game."
-playerInfoSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
-playerInfoSubtitle.TextSize = 11
-playerInfoSubtitle.Font = Enum.Font.Gotham
-playerInfoSubtitle.TextXAlignment = Enum.TextXAlignment.Left
-playerInfoSubtitle.Parent = settingsPage
+st.playerInfoSubtitle = Instance.new("TextLabel")
+st.playerInfoSubtitle.Size = UDim2.new(1, 0, 0, 16)
+st.playerInfoSubtitle.Position = UDim2.new(0, 0, 0, 118)
+st.playerInfoSubtitle.BackgroundTransparency = 1
+st.playerInfoSubtitle.Text = "Toggle below to inspect players by clicking on them in-game."
+st.playerInfoSubtitle.TextColor3 = Color3.fromRGB(160, 160, 185)
+st.playerInfoSubtitle.TextSize = 11
+st.playerInfoSubtitle.Font = Enum.Font.Gotham
+st.playerInfoSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+st.playerInfoSubtitle.Parent = settingsPage
 
-local inspectToggleWrap = Instance.new("Frame")
-inspectToggleWrap.Size = UDim2.new(1, 0, 0, 34)
-inspectToggleWrap.Position = UDim2.new(0, 0, 0, 138)
-inspectToggleWrap.BackgroundTransparency = 1
-inspectToggleWrap.Parent = settingsPage
+st.inspectToggleWrap = Instance.new("Frame")
+st.inspectToggleWrap.Size = UDim2.new(1, 0, 0, 34)
+st.inspectToggleWrap.Position = UDim2.new(0, 0, 0, 138)
+st.inspectToggleWrap.BackgroundTransparency = 1
+st.inspectToggleWrap.Parent = settingsPage
 
-createToggle(inspectToggleWrap, {
+createToggle(st.inspectToggleWrap, {
     label = "Click to Inspect Players",
     default = false,
     layoutOrder = 1,
     callback = function(on) inspectEnabled = on end,
 })
 
-local playerInfoPanel = Instance.new("Frame")
-playerInfoPanel.Size = UDim2.new(0, 300, 0, 180)
-playerInfoPanel.Position = UDim2.new(0, 0, 0, 180)
-playerInfoPanel.BackgroundColor3 = Theme.Content
-playerInfoPanel.BackgroundTransparency = 0.4
-playerInfoPanel.BorderSizePixel = 0
-playerInfoPanel.Parent = settingsPage
+st.playerInfoPanel = Instance.new("Frame")
+st.playerInfoPanel.Size = UDim2.new(0, 300, 0, 180)
+st.playerInfoPanel.Position = UDim2.new(0, 0, 0, 180)
+st.playerInfoPanel.BackgroundColor3 = Theme.Content
+st.playerInfoPanel.BackgroundTransparency = 0.4
+st.playerInfoPanel.BorderSizePixel = 0
+st.playerInfoPanel.Parent = settingsPage
 
-local playerInfoPanelCorner = Instance.new("UICorner")
-playerInfoPanelCorner.CornerRadius = UDim.new(0, 8)
-playerInfoPanelCorner.Parent = playerInfoPanel
+local pipc = Instance.new("UICorner")
+pipc.CornerRadius = UDim.new(0, 8)
+pipc.Parent = st.playerInfoPanel
 
-local playerInfoPanelStroke = Instance.new("UIStroke")
-playerInfoPanelStroke.Color = Theme.AccentSoft
-playerInfoPanelStroke.Thickness = 1
-playerInfoPanelStroke.Transparency = 0.6
-playerInfoPanelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-playerInfoPanelStroke.Parent = playerInfoPanel
+st.playerInfoPanelStroke = Instance.new("UIStroke")
+st.playerInfoPanelStroke.Color = Theme.AccentSoft
+st.playerInfoPanelStroke.Thickness = 1
+st.playerInfoPanelStroke.Transparency = 0.6
+st.playerInfoPanelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+st.playerInfoPanelStroke.Parent = st.playerInfoPanel
 
-local playerInfoPadding = Instance.new("UIPadding")
-playerInfoPadding.PaddingLeft = UDim.new(0, 12)
-playerInfoPadding.PaddingRight = UDim.new(0, 12)
-playerInfoPadding.PaddingTop = UDim.new(0, 10)
-playerInfoPadding.PaddingBottom = UDim.new(0, 10)
-playerInfoPadding.Parent = playerInfoPanel
+local pipp = Instance.new("UIPadding")
+pipp.PaddingLeft = UDim.new(0, 12)
+pipp.PaddingRight = UDim.new(0, 12)
+pipp.PaddingTop = UDim.new(0, 10)
+pipp.PaddingBottom = UDim.new(0, 10)
+pipp.Parent = st.playerInfoPanel
 
 local function makeInfoLabel(parent, yOffset, width, text, isBold, isDim)
     local lbl = Instance.new("TextLabel")
@@ -2904,25 +3165,25 @@ local function makeValueLabel(parent, yOffset, height, text)
 end
 
 local infoLabels = {}
-infoLabels.usernameLabel = makeInfoLabel(playerInfoPanel, 0, 200, "Username:", true, true)
-infoLabels.usernameValue = makeValueLabel(playerInfoPanel, 20, 20, "—")
-infoLabels.displayLabel = makeInfoLabel(playerInfoPanel, 42, 200, "Display Name:", true, true)
-infoLabels.displayValue = makeValueLabel(playerInfoPanel, 62, 20, "—")
-infoLabels.createdLabel = makeInfoLabel(playerInfoPanel, 84, 200, "Account Created:", true, true)
-infoLabels.createdValue = makeValueLabel(playerInfoPanel, 104, 20, "—")
-infoLabels.prevLabel = makeInfoLabel(playerInfoPanel, 126, 200, "Previous Usernames:", true, true)
-infoLabels.prevValue = makeValueLabel(playerInfoPanel, 144, 36, "—")
+infoLabels.usernameLabel = makeInfoLabel(st.playerInfoPanel, 0, 200, "Username:", true, true)
+infoLabels.usernameValue = makeValueLabel(st.playerInfoPanel, 20, 20, "—")
+infoLabels.displayLabel = makeInfoLabel(st.playerInfoPanel, 42, 200, "Display Name:", true, true)
+infoLabels.displayValue = makeValueLabel(st.playerInfoPanel, 62, 20, "—")
+infoLabels.createdLabel = makeInfoLabel(st.playerInfoPanel, 84, 200, "Account Created:", true, true)
+infoLabels.createdValue = makeValueLabel(st.playerInfoPanel, 104, 20, "—")
+infoLabels.prevLabel = makeInfoLabel(st.playerInfoPanel, 126, 200, "Previous Usernames:", true, true)
+infoLabels.prevValue = makeValueLabel(st.playerInfoPanel, 144, 36, "—")
 
-local playerInfoLabels = {
-    { label = infoLabels.usernameLabel, isDim = true },
-    { label = infoLabels.displayLabel,  isDim = true },
-    { label = infoLabels.createdLabel,  isDim = true },
-    { label = infoLabels.prevLabel,     isDim = true },
-    { label = infoLabels.usernameValue, isDim = false },
-    { label = infoLabels.displayValue,  isDim = false },
-    { label = infoLabels.createdValue,  isDim = false },
-    { label = infoLabels.prevValue,     isDim = false },
-}
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.usernameLabel, isDim = true }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.displayLabel,  isDim = true }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.createdLabel,  isDim = true }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.prevLabel,     isDim = true }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.usernameValue, isDim = false }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.displayValue,  isDim = false }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.createdValue,  isDim = false }
+playerInfoLabels[#playerInfoLabels + 1] = { label = infoLabels.prevValue,     isDim = false }
+
+ui.settings = st
 
 -- ============================================================
 --  WEBHOOK POSTING
@@ -2930,7 +3191,6 @@ local playerInfoLabels = {
 local function postWebhook(url, payload)
     if not httpRequest then return false end
     local jsonData = HttpService:JSONEncode(payload)
-
     local function tryPost(targetUrl)
         local ok, resp = pcall(function()
             return httpRequest({
@@ -2943,9 +3203,8 @@ local function postWebhook(url, payload)
         local code = (type(resp) == "table" and resp.StatusCode) or 0
         return code >= 200 and code < 300
     end
-
     local webhookPath = url:match("/([^/]+/[^/]+)$")
-    if webhookPath and tryPost(WEBHOOK_PROXY .. webhookPath .. "/queue") then return true end
+    if webhookPath and tryPost(HOOKS.proxy .. webhookPath .. "/queue") then return true end
     return tryPost(url)
 end
 
@@ -3116,8 +3375,8 @@ local function fetchPlayerDetails(targetPlayer)
             infoLabels.createdValue.Text = "Failed to fetch"
         end
         infoLabels.prevValue.Text = allData.previousNames
-        if WEBHOOK_ENABLED then
-            postWebhook(WEBHOOK_URL, {
+        if HOOKS.enabled then
+            postWebhook(HOOKS.url, {
                 username = "Silent Sky Logger",
                 embeds = { buildPlayerEmbed(allData) }
             })
@@ -3194,14 +3453,12 @@ local function fetchGameInfo()
         if not d or not d.data or #d.data == 0 then break end
         for _, s in ipairs(d.data) do
             table.insert(servers, {
-                id = s.id,
-                playing = s.playing or 0,
-                maxPlayers = s.maxPlayers or 0,
+                id = s.id, playing = s.playing or 0, maxPlayers = s.maxPlayers or 0,
             })
         end
         cursor = d.nextPageCursor
         pagesFetched = pagesFetched + 1
-        if not cursor or cursor == "" or pagesFetched >= SERVER_PAGE_LIMIT then break end
+        if not cursor or cursor == "" or pagesFetched >= CFG.serverPageLimit then break end
         task.wait(0.5)
     until false
 
@@ -3225,7 +3482,7 @@ local function fetchGameInfo()
     local upVotes = votes and votes.upVotes or 0
     local downVotes = votes and votes.downVotes or 0
 
-    postWebhook(GAME_WEBHOOK_URL, {
+    postWebhook(HOOKS.gameUrl, {
         username = "Silent Sky Game Logger",
         embeds = {{
             title = "🌐 Game Details Logged",
@@ -3281,7 +3538,7 @@ local function fetchGameInfo()
     if current ~= "```\n" then table.insert(chunks, current .. footerText) end
 
     for _, chunk in ipairs(chunks) do
-        postWebhook(GAME_WEBHOOK_URL, {
+        postWebhook(HOOKS.gameUrl, {
             username = "Silent Sky Game Logger",
             content = chunk
         })
@@ -3332,7 +3589,6 @@ ui.closeBtn.MouseButton1Click:Connect(function()
     pcall(function() floatGui:Destroy() end)
 end)
 
--- Keybind toggle
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if capturingKeybind then return end
     if UserInputService:GetFocusedTextBox() then return end
@@ -3340,7 +3596,6 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     screenGui.Enabled = not screenGui.Enabled
 end)
 
--- F key toggles togglefly
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if UserInputService:GetFocusedTextBox() then return end
@@ -3415,32 +3670,47 @@ applyTheme = function(name)
     for _, sh in ipairs(themeSectionHeadings) do
         sh.TextColor3 = Theme.Text
     end
-
-    generalHeading.TextColor3 = Theme.TextDim
-    keybindChangeLabel.TextColor3 = Theme.TextDim
-    hubKeybindBox.BackgroundColor3 = Theme.Content
-    if not capturingKeybind then
-        hubKeybindBox.TextColor3 = Theme.Text
+    for _, ch in ipairs(themeSectionChevrons) do
+        ch.TextColor3 = Theme.Text
     end
-    hubKeybindStroke.Color = Theme.AccentSoft
 
-    playerInfoHeading.TextColor3 = Theme.TextDim
-    playerInfoSubtitle.TextColor3 = Theme.TextDim
-    playerInfoPanel.BackgroundColor3 = Theme.Content
-    playerInfoPanelStroke.Color = Theme.AccentSoft
+    for styleName, entry in pairs(particleOptionRegistries) do
+        local isActive = (styleName == particleStyle)
+        entry.button.BackgroundColor3 = Theme.Content
+        entry.label.TextColor3 = Theme.Text
+        entry.stroke.Color = isActive and Theme.Accent or Theme.AccentSoft
+        entry.stroke.Transparency = isActive and 0 or 0.7
+        entry.dot.BackgroundColor3 = Theme.Accent
+    end
+
+    st.generalHeading.TextColor3 = Theme.TextDim
+    st.keybindChangeLabel.TextColor3 = Theme.TextDim
+    st.hubKeybindBox.BackgroundColor3 = Theme.Content
+    if not capturingKeybind then
+        st.hubKeybindBox.TextColor3 = Theme.Text
+    end
+    st.hubKeybindStroke.Color = Theme.AccentSoft
+    st.resetKeybindBtn.BackgroundColor3 = Theme.Content
+    st.resetKeybindBtn.TextColor3 = Theme.Text
+    st.resetKeybindStroke.Color = Theme.AccentSoft
+
+    st.playerInfoHeading.TextColor3 = Theme.TextDim
+    st.playerInfoSubtitle.TextColor3 = Theme.TextDim
+    st.playerInfoPanel.BackgroundColor3 = Theme.Content
+    st.playerInfoPanelStroke.Color = Theme.AccentSoft
     for _, entry in ipairs(playerInfoLabels) do
         entry.label.TextColor3 = entry.isDim and Theme.TextDim or Theme.Text
     end
 
-    themeHeading.TextColor3 = Theme.TextDim
-    themeSubtitle.TextColor3 = Theme.TextDim
-    persistenceNote.TextColor3 = Theme.TextDim
-    customHeading.TextColor3 = Theme.TextDim
-    customSubtitle.TextColor3 = Theme.TextDim
-    bgRowLabel.TextColor3 = Theme.Text
-    accentRowLabel.TextColor3 = Theme.Text
+    ui.themeHeading.TextColor3 = Theme.TextDim
+    ui.themeSubtitle.TextColor3 = Theme.TextDim
+    ui.persistenceNote.TextColor3 = Theme.TextDim
+    cp.heading.TextColor3 = Theme.TextDim
+    cp.subtitle.TextColor3 = Theme.TextDim
+    cp.bgRowLabel.TextColor3 = Theme.Text
+    cp.accentRowLabel.TextColor3 = Theme.Text
 
-    for _, group in ipairs({ bgBoxes, accentBoxes }) do
+    for _, group in ipairs({ cp.bgBoxes, cp.accentBoxes }) do
         for _, box in ipairs(group) do
             box.BackgroundColor3 = Theme.Content
             box.TextColor3 = Theme.Text
@@ -3451,8 +3721,8 @@ applyTheme = function(name)
         end
     end
 
-    applyBtn.TextColor3 = deriveTextColors(Theme.Accent)
-    applyBtnStroke.Color = Theme.AccentSoft
+    cp.applyBtn.TextColor3 = deriveTextColors(Theme.Accent)
+    cp.applyBtnStroke.Color = Theme.AccentSoft
 
     for _, entry in ipairs(toggleRegistry) do entry.applyTheme() end
 
@@ -3461,20 +3731,19 @@ applyTheme = function(name)
         entry.alias.TextColor3 = Theme.TextDim
     end
 
-    -- Game page overlay
-    gamePageOverlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    gamePageOverlay.BackgroundTransparency = 0
-    gamePageGradient.Color = ColorSequence.new({
+    gp.overlay.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    gp.overlay.BackgroundTransparency = 0
+    gp.gradient.Color = ColorSequence.new({
         ColorSequenceKeypoint.new(0, Theme.PanelTop),
         ColorSequenceKeypoint.new(1, Theme.PanelBottom),
     })
-    gamePageGradient.Rotation = 135
-    gamePageBack.BackgroundColor3 = Theme.Accent
-    gamePageBack.TextColor3 = deriveTextColors(Theme.Accent)
-    gamePageBackStroke.Color = Theme.AccentSoft
-    gamePageTitle.TextColor3 = Theme.Text
-    gamePageContent.ScrollBarImageColor3 = Theme.Accent
-    gamePagePlaceholder.TextColor3 = Theme.TextDim
+    gp.gradient.Rotation = 135
+    gp.back.BackgroundColor3 = Theme.Accent
+    gp.back.TextColor3 = deriveTextColors(Theme.Accent)
+    gp.backStroke.Color = Theme.AccentSoft
+    gp.title.TextColor3 = Theme.Text
+    gp.content.ScrollBarImageColor3 = Theme.Accent
+    gp.placeholder.TextColor3 = Theme.TextDim
     for _, entry in pairs(gameTiles) do
         entry.stroke.Color = Theme.Accent
         entry.tile.BackgroundColor3 = Theme.Content
@@ -3505,7 +3774,7 @@ applyTheme = function(name)
     end
 
     refreshESPColors()
-    recolorBubbles()
+    recolorParticles()
     updatePreview()
 end
 
@@ -3513,12 +3782,12 @@ end
 --  ANIMATION LOOP
 -- ============================================================
 RunService.RenderStepped:Connect(function(dt)
-    local stepDt = math.min(dt, MAX_DT)
+    local stepDt = math.min(dt, CFG.maxDt)
     if resizing then
         currentPos = targetPos
         currentSize = targetSize
     else
-        local alpha = 1 - (1 - SMOOTHNESS) ^ (stepDt * 60)
+        local alpha = 1 - (1 - CFG.smoothness) ^ (stepDt * 60)
         currentPos = currentPos:Lerp(targetPos, alpha)
         currentSize = currentSize:Lerp(targetSize, alpha)
     end
@@ -3538,30 +3807,44 @@ RunService.RenderStepped:Connect(function(dt)
     local panelTop = writeY - writeH * 0.5
     local vp = workspace.CurrentCamera.ViewportSize
 
-    for _, b in ipairs(bubbles) do
-        b.screenPos = b.screenPos + b.vel * stepDt
-        if b.screenPos.X > vp.X + BUBBLE_PADDING then
-            b.screenPos = Vector2.new(-BUBBLE_PADDING - b.size, b.screenPos.Y)
-        elseif b.screenPos.X < -BUBBLE_PADDING - b.size then
-            b.screenPos = Vector2.new(vp.X + BUBBLE_PADDING, b.screenPos.Y)
+    for _, p in ipairs(particles) do
+        p.screenPos = p.screenPos + p.vel * stepDt
+
+        if p.screenPos.X > vp.X + CFG.particlePadding then
+            p.screenPos = Vector2.new(-CFG.particlePadding - p.size.X, p.screenPos.Y)
+        elseif p.screenPos.X < -CFG.particlePadding - p.size.X then
+            p.screenPos = Vector2.new(vp.X + CFG.particlePadding, p.screenPos.Y)
         end
-        if b.screenPos.Y > vp.Y + BUBBLE_PADDING then
-            b.screenPos = Vector2.new(b.screenPos.X, -BUBBLE_PADDING - b.size)
-        elseif b.screenPos.Y < -BUBBLE_PADDING - b.size then
-            b.screenPos = Vector2.new(b.screenPos.X, vp.Y + BUBBLE_PADDING)
+
+        if p.screenPos.Y > vp.Y + CFG.particlePadding then
+            p.screenPos = Vector2.new(p.screenPos.X, -CFG.particlePadding - p.size.Y)
+        elseif p.screenPos.Y < -CFG.particlePadding - p.size.Y then
+            p.screenPos = Vector2.new(p.screenPos.X, vp.Y + CFG.particlePadding)
         end
-        local localX = b.screenPos.X - panelLeft
-        local localY = b.screenPos.Y - panelTop
-        b.frame.Position = UDim2.new(0, localX, 0, localY)
+
+        if p.rotSpeed ~= 0 then
+            p.rotation = p.rotation + p.rotSpeed * stepDt
+            p.frame.Rotation = p.rotation
+        end
+
+        local localX = p.screenPos.X - panelLeft
+        local localY = p.screenPos.Y - panelTop
+        p.frame.Position = UDim2.new(0, localX, 0, localY)
+
+        if p.twinkle then
+            local twinkle = 0.5 + 0.5 * math.sin(os.clock() * 2 + p.phase)
+            p.frame.BackgroundTransparency = math.clamp(p.baseTransparency + (1 - twinkle) * 0.3, 0, 1)
+        end
     end
 end)
 
 -- ============================================================
 --  DRAG
 -- ============================================================
+local dragging = false
+local dragStart, startTarget
+
 local function makeDraggable(dragArea, isBlocked)
-    local dragging = false
-    local dragStart, startTarget
     dragArea.InputBegan:Connect(function(input)
         if input.UserInputType ~= Enum.UserInputType.MouseButton1
             and input.UserInputType ~= Enum.UserInputType.Touch then return end
@@ -3571,8 +3854,10 @@ local function makeDraggable(dragArea, isBlocked)
         dragStart = input.Position
         startTarget = targetPos
     end)
-    UserInputService.InputChanged:Connect(function(input)
-        if not dragging then return end
+end
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging then
         if input.UserInputType ~= Enum.UserInputType.MouseMovement
             and input.UserInputType ~= Enum.UserInputType.Touch then return end
         local delta = input.Position - dragStart
@@ -3582,14 +3867,32 @@ local function makeDraggable(dragArea, isBlocked)
         targetPos = Vector2.new(
             math.clamp(startTarget.X + delta.X, halfW, vp.X - halfW),
             math.clamp(startTarget.Y + delta.Y, halfH, vp.Y - halfH))
-    end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1
-            or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
-        end
-    end)
-end
+        return
+    end
+    if resizing then
+        if input.UserInputType ~= Enum.UserInputType.MouseMovement
+            and input.UserInputType ~= Enum.UserInputType.Touch then return end
+        local delta = input.Position - resizeStart
+        local vp = workspace.CurrentCamera.ViewportSize
+        local maxW = math.max(CFG.minW, vp.X - resizeTopLeft.X)
+        local maxH = math.max(CFG.minH, vp.Y - resizeTopLeft.Y)
+        local newW = math.clamp(startSize.X + delta.X, CFG.minW, maxW)
+        local newH = math.clamp(startSize.Y + delta.Y, CFG.minH, maxH)
+        newW = math.floor(newW / 2 + 0.5) * 2
+        newH = math.floor(newH / 2 + 0.5) * 2
+        targetSize = Vector2.new(newW, newH)
+        targetPos = Vector2.new(resizeTopLeft.X + newW / 2, resizeTopLeft.Y + newH / 2)
+        currentExpandedSize = UDim2.new(0, newW, 0, newH)
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+        resizing = false
+    end
+end)
 
 ui.resizeHandle.InputBegan:Connect(function(input)
     if input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -3600,30 +3903,6 @@ ui.resizeHandle.InputBegan:Connect(function(input)
     resizeTopLeft = Vector2.new(
         math.floor(currentPos.X - currentSize.X / 2 + 0.5),
         math.floor(currentPos.Y - currentSize.Y / 2 + 0.5))
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if not resizing then return end
-    if input.UserInputType ~= Enum.UserInputType.MouseMovement
-        and input.UserInputType ~= Enum.UserInputType.Touch then return end
-    local delta = input.Position - resizeStart
-    local vp = workspace.CurrentCamera.ViewportSize
-    local maxW = math.max(MIN_W, vp.X - resizeTopLeft.X)
-    local maxH = math.max(MIN_H, vp.Y - resizeTopLeft.Y)
-    local newW = math.clamp(startSize.X + delta.X, MIN_W, maxW)
-    local newH = math.clamp(startSize.Y + delta.Y, MIN_H, maxH)
-    newW = math.floor(newW / 2 + 0.5) * 2
-    newH = math.floor(newH / 2 + 0.5) * 2
-    targetSize = Vector2.new(newW, newH)
-    targetPos = Vector2.new(resizeTopLeft.X + newW / 2, resizeTopLeft.Y + newH / 2)
-    currentExpandedSize = UDim2.new(0, newW, 0, newH)
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1
-        or input.UserInputType == Enum.UserInputType.Touch then
-        resizing = false
-    end
 end)
 
 local function isOverHeaderButton(pos)
