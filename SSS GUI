@@ -6,6 +6,8 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
 local RunService       = game:GetService("RunService")
 local HttpService      = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace        = game:GetService("Workspace")
 
 -- ================================================================
 -- 2. CONFIG
@@ -24,8 +26,6 @@ local CFG = {
     cornerRadius   = 10,
     toggleKey      = Enum.KeyCode.F4,
 }
-
-local SUB_WINDOW_NAME = "SilentSkyCorsa"
 
 -- ================================================================
 -- 3. WEBHOOKS
@@ -50,15 +50,9 @@ local function tryPostWebhook(url, jsonData)
             Body = jsonData,
         })
     end)
-    if not ok then
-        warn("[Silent Sky] Webhook threw: " .. tostring(resp))
-        return false
-    end
+    if not ok then return false end
     local code = (type(resp) == "table" and resp.StatusCode) or 0
-    if code < 200 or code >= 300 then
-        warn("[Silent Sky] Webhook returned HTTP " .. tostring(code))
-        return false
-    end
+    if code < 200 or code >= 300 then return false end
     return true
 end
 
@@ -70,7 +64,6 @@ local function sendWebhook(name, payload)
     local jsonData = HttpService:JSONEncode(payload)
     local directUrl = "https://discord.com/api/webhooks/" .. path
     if tryPostWebhook(directUrl, jsonData) then return true end
-    if tryPostWebhook(Webhooks.proxy .. path .. "/queue", jsonData) then return true end
     return false
 end
 
@@ -128,7 +121,7 @@ local Palette = Themes[currentTheme]
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-for _, name in ipairs({"SilentSkyScripts", SUB_WINDOW_NAME, "SilentSkyFloatBar", "SilentSkyLoading"}) do
+for _, name in ipairs({"SilentSkyScripts", "SilentSkyFloatBar", "SilentSkyLoading"}) do
     local existing = playerGui:FindFirstChild(name)
     if existing then existing:Destroy() end
 end
@@ -169,22 +162,257 @@ local lastSx, lastSy = -1, -1
 local tabs          = {}
 local tabOrder      = {}
 local activeTab     = nil
+local lastActiveTab = "Themes"
 local themeSwatches = {}
 
-local gameCards   = {}
-local subWindow   = nil
-local subToggles  = {}
-
--- Sub-window spawns at the same position & size as the main window
-local subState    = {
-    currentPos = initialPos,
-    targetPos  = initialPos,
-    dragging   = false,
-}
-local lastSubPx, lastSubPy = -1, -1
+local gameCards  = {}
+local subToggles = {}
+local isGameView = false
 
 -- ================================================================
--- 7. GUI CONSTRUCTION (MAIN WINDOW)
+-- 7. PUMPKIN AUTO LOGIC (Integrated from script)
+-- ================================================================
+local PumpkinAuto = {}
+PumpkinAuto.running = false
+PumpkinAuto.heartbeat = nil
+
+function PumpkinAuto.start()
+    if PumpkinAuto.running then return end
+    PumpkinAuto.running = true
+    
+    local CONFIG = {
+        FireDelay       = 0.35,
+        RetryDelay      = 0.15,
+        HeightOffset    = 5,
+        TeleportToEach  = true,
+        FlightHeight    = 8,
+        FlightRayStart  = 500,
+        SpiralStep      = 50,
+        SpiralSpacing   = 350,
+        FlightSpeed     = 2000,
+        RequestTimeout  = 4,
+        StreamInterval  = 0.04,
+        MapCenter       = Vector2.new(0, 0),
+        MapRadius       = 8000,
+        RescanDelay     = 0.5,
+    }
+    
+    local Remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local Collect = Remotes and Remotes:FindFirstChild("HalloweenPumpkinCollect")
+    if not Collect then
+        warn("[Silent Sky] Remotes missing. Are you in Corsa Legends?")
+        PumpkinAuto.running = false
+        return
+    end
+    
+    local mode = "flight"
+    
+    local function getHRP()
+        local c = player.Character
+        return c and c:FindFirstChild("HumanoidRootPart")
+    end
+    
+    local function getPumpkinFolder()
+        return Workspace:FindFirstChild("HalloweenPumpkins")
+    end
+    
+    local function fireRemote(name)
+        pcall(function() Collect:FireServer(name) end)
+    end
+    
+    local function teleportTo(pos)
+        local hrp = getHRP()
+        if not hrp then return end
+        pcall(function()
+            hrp.CFrame = CFrame.new(pos + Vector3.new(0, CONFIG.HeightOffset, 0))
+            hrp.AssemblyLinearVelocity  = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end)
+    end
+    
+    local groundRayParams = RaycastParams.new()
+    groundRayParams.FilterType  = Enum.RaycastFilterType.Exclude
+    groundRayParams.IgnoreWater = true
+    
+    local function getGroundY(x, z)
+        local filters = {}
+        if player.Character then table.insert(filters, player.Character) end
+        local folder = getPumpkinFolder()
+        if folder then table.insert(filters, folder) end
+        groundRayParams.FilterDescendantsInstances = filters
+        
+        local origin = Vector3.new(x, CONFIG.FlightRayStart, z)
+        local result = Workspace:Raycast(origin, Vector3.new(0, -CONFIG.FlightRayStart * 2, 0), groundRayParams)
+        return result and result.Position.Y or nil
+    end
+    
+    local spiral = {
+        points = {}, cum = {}, totalLen = 0,
+        distance = 0, segIndex = 2, laps = 0,
+    }
+    
+    local function buildSpiral()
+        local center  = CONFIG.MapCenter
+        local radius  = CONFIG.MapRadius
+        local spacing = CONFIG.SpiralSpacing
+        local stepLen = CONFIG.SpiralStep
+        
+        local b = spacing / (2 * math.pi)
+        local maxTheta = radius / b
+        
+        local pts = {}
+        local theta = 0
+        local safety = 0
+        while theta < maxTheta and safety < 200000 do
+            local r = b * theta
+            table.insert(pts, Vector2.new(
+                center.X + r * math.cos(theta),
+                center.Y + r * math.sin(theta)
+            ))
+            local denom = math.sqrt(b*b + r*r)
+            local dtheta = stepLen / denom
+            if dtheta < 0.02 then dtheta = 0.02 end
+            theta = theta + dtheta
+            safety = safety + 1
+        end
+        
+        local cum = {0}
+        for i = 2, #pts do
+            cum[i] = cum[i-1] + (pts[i] - pts[i-1]).Magnitude
+        end
+        
+        spiral.points   = pts
+        spiral.cum      = cum
+        spiral.totalLen = cum[#cum] or 0
+        spiral.distance = 0
+        spiral.segIndex = 2
+        spiral.laps     = 0
+    end
+    
+    local function posAtDistance(d)
+        local pts, cum, n = spiral.points, spiral.cum, #spiral.points
+        if n == 0 then return Vector2.new(0, 0) end
+        
+        local i = spiral.segIndex
+        while i <= n and cum[i] < d do i = i + 1 end
+        spiral.segIndex = i
+        if i > n then return pts[n] end
+        
+        local segLen = cum[i] - cum[i-1]
+        local t = segLen > 0 and (d - cum[i-1]) / segLen or 0
+        return pts[i-1]:Lerp(pts[i], t)
+    end
+    
+    buildSpiral()
+    
+    local lastGroundY    = 0
+    local lastStreamTime = 0
+    local lastHeartbeat  = tick()
+    
+    PumpkinAuto.heartbeat = RunService.Heartbeat:Connect(function()
+        if not PumpkinAuto.running or mode ~= "flight" then return end
+        if not getHRP() then return end
+        
+        local now = tick()
+        local dt  = now - lastHeartbeat
+        lastHeartbeat = now
+        
+        if dt > 0.25 then return end
+        
+        spiral.distance = spiral.distance + CONFIG.FlightSpeed * dt
+        if spiral.distance >= spiral.totalLen then
+            spiral.distance = spiral.distance - spiral.totalLen
+            spiral.segIndex = 2
+            spiral.laps = spiral.laps + 1
+        end
+        
+        local wp = posAtDistance(spiral.distance)
+        local groundY = getGroundY(wp.X, wp.Y) or lastGroundY
+        lastGroundY = groundY
+        local target = Vector3.new(wp.X, groundY + CONFIG.FlightHeight, wp.Y)
+        
+        local hrp = getHRP()
+        if hrp then
+            pcall(function()
+                hrp.CFrame = CFrame.new(target)
+                hrp.AssemblyLinearVelocity  = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end
+        
+        if now - lastStreamTime > CONFIG.StreamInterval then
+            lastStreamTime = now
+            task.spawn(function()
+                pcall(function()
+                    Workspace:RequestStreamAroundAsync(target, CONFIG.RequestTimeout)
+                end)
+            end)
+        end
+    end)
+    
+    task.spawn(function()
+        repeat task.wait(0.1) until getHRP() or not PumpkinAuto.running
+        
+        while PumpkinAuto.running do
+            local folder = getPumpkinFolder()
+            local pumpkins = {}
+            if folder then
+                for _, c in ipairs(folder:GetChildren()) do
+                    if c:IsA("Model") then table.insert(pumpkins, c) end
+                end
+            end
+            
+            if #pumpkins > 0 then
+                if mode ~= "collect" then
+                    mode = "collect"
+                end
+                
+                for _, pumpkin in ipairs(pumpkins) do
+                    if not PumpkinAuto.running or mode ~= "collect" then break end
+                    if not pumpkin.Parent then continue end
+                    
+                    local name = pumpkin.Name
+                    local pos  = pumpkin:GetPivot().Position
+                    
+                    if CONFIG.TeleportToEach then
+                        teleportTo(pos)
+                        task.wait(0.08)
+                    end
+                    
+                    fireRemote(name)
+                    task.wait(CONFIG.FireDelay)
+                    
+                    if pumpkin.Parent and PumpkinAuto.running then
+                        task.wait(CONFIG.RetryDelay)
+                        if pumpkin.Parent then
+                            fireRemote(name)
+                            task.wait(CONFIG.FireDelay)
+                        end
+                    end
+                end
+                
+                task.wait(CONFIG.RescanDelay)
+            else
+                if mode ~= "flight" then
+                    mode = "flight"
+                    lastHeartbeat = tick()
+                end
+                task.wait(0.1)
+            end
+        end
+    end)
+end
+
+function PumpkinAuto.stop()
+    PumpkinAuto.running = false
+    if PumpkinAuto.heartbeat then
+        PumpkinAuto.heartbeat:Disconnect()
+        PumpkinAuto.heartbeat = nil
+    end
+end
+
+-- ================================================================
+-- 8. GUI CONSTRUCTION (MAIN WINDOW)
 -- ================================================================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name           = "SilentSkyScripts"
@@ -286,9 +514,6 @@ closeBtn.MouseLeave:Connect(function()
     TweenService:Create(closeBtn, TweenInfo.new(0.15), { BackgroundColor3 = Palette.Close }):Play()
 end)
 closeBtn.MouseButton1Click:Connect(function()
-    if subWindow and subWindow.screenGui then
-        subWindow.screenGui:Destroy()
-    end
     screenGui:Destroy()
 end)
 
@@ -334,6 +559,33 @@ local accentBarCorner = Instance.new("UICorner")
 accentBarCorner.CornerRadius = UDim.new(1, 0)
 accentBarCorner.Parent       = accentBar
 
+-- Back Button (Hidden by default, replaces tabs)
+local backBtn = Instance.new("TextButton")
+backBtn.Size                   = UDim2.new(1, -CFG.tabLeftPadding * 2, 0, CFG.tabHeight)
+backBtn.Position               = UDim2.new(0, CFG.tabLeftPadding, 0, CFG.tabTopPadding)
+backBtn.BackgroundTransparency = 0.85
+backBtn.BackgroundColor3       = Palette.Accent
+backBtn.Text                   = ""
+backBtn.AutoButtonColor        = false
+backBtn.BorderSizePixel        = 0
+backBtn.Visible                = false
+backBtn.Parent                 = sidebar
+
+local backCorner = Instance.new("UICorner")
+backCorner.CornerRadius = UDim.new(0, 6)
+backCorner.Parent       = backBtn
+
+local backLabel = Instance.new("TextLabel")
+backLabel.Size                   = UDim2.new(1, -20, 1, 0)
+backLabel.Position               = UDim2.new(0, 14, 0, 0)
+backLabel.BackgroundTransparency = 1
+backLabel.Text                   = "< Back"
+backLabel.TextColor3             = Palette.Text
+backLabel.TextSize               = 13
+backLabel.Font                   = Enum.Font.GothamBold
+backLabel.TextXAlignment         = Enum.TextXAlignment.Left
+backLabel.Parent                 = backBtn
+
 local pageHolder = Instance.new("Frame")
 pageHolder.Name                 = "PageHolder"
 pageHolder.Size                 = UDim2.new(1, -CFG.sidebarWidth, 1, 0)
@@ -372,15 +624,18 @@ for i = 0, 2 do
 end
 
 -- ================================================================
--- 8. TAB SYSTEM
+-- 9. TAB SYSTEM
 -- ================================================================
 local function selectTab(name)
-    if not tabs[name] or activeTab == name then return end
+    if not tabs[name] or activeTab == name or isGameView then return end
     local prev = activeTab
     activeTab = name
+    lastActiveTab = name
+    
     for _, tabName in ipairs(tabOrder) do
         tabs[tabName].setActive(tabName == name)
     end
+    
     local targetY = tabs[name].centerY
     if prev == nil then
         accentBar.Position = UDim2.new(0, 0, 0, targetY)
@@ -464,7 +719,7 @@ local function createTab(name)
 end
 
 -- ================================================================
--- 9. THEME SYSTEM
+-- 10. THEME SYSTEM
 -- ================================================================
 local function applyTheme(key)
     local t = Themes[key]
@@ -493,6 +748,9 @@ local function applyTheme(key)
     sidebarDivider.BackgroundColor3  = t.Stroke
     accentBar.BackgroundColor3       = t.Accent
 
+    backBtn.BackgroundColor3 = t.Accent
+    backLabel.TextColor3     = headerTextColor(t.Accent)
+
     for _, dot in ipairs(resizeHandle:GetChildren()) do
         if dot:IsA("Frame") then dot.BackgroundColor3 = t.TextDim end
     end
@@ -516,27 +774,6 @@ local function applyTheme(key)
         entry.nameLabel.TextColor3  = t.Text
     end
 
-    if subWindow and subWindow.screenGui and subWindow.screenGui.Parent then
-        subWindow.panel.BackgroundColor3 = t.PanelTop
-        subWindow.gradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, t.PanelTop),
-            ColorSequenceKeypoint.new(1, t.PanelBot),
-        })
-        subWindow.stroke.Color                   = t.Stroke
-        subWindow.header.BackgroundColor3        = t.Header
-        subWindow.headerFlatten.BackgroundColor3 = t.Header
-        subWindow.headerDivider.BackgroundColor3 = t.Stroke
-        subWindow.accentDot.BackgroundColor3     = t.Accent
-        subWindow.title.TextColor3               = headerTextColor(t.Header)
-        subWindow.closeBtn.BackgroundColor3      = t.Close
-        subWindow.closeIcon.TextColor3           = headerTextColor(t.Close)
-        subWindow.sidebar.BackgroundColor3       = t.Sidebar
-        subWindow.sidebarTopCover.BackgroundColor3 = t.Sidebar
-        subWindow.sidebarDivider.BackgroundColor3  = t.Stroke
-        subWindow.tab.button.BackgroundColor3    = t.Accent
-        subWindow.tab.label.TextColor3           = t.Text
-    end
-
     for _, tg in ipairs(subToggles) do
         tg.label.TextColor3       = t.Text
         tg.track.BackgroundColor3 = tg:isOn() and t.Accent or t.Stroke
@@ -545,7 +782,7 @@ local function applyTheme(key)
 end
 
 -- ================================================================
--- 10. THEMES TAB
+-- 11. THEMES TAB
 -- ================================================================
 local themesPage = createTab("Themes")
 
@@ -641,7 +878,7 @@ createSwatch(themeGrid, "Abyss", 2)
 createSwatch(themeGrid, "Crimson", 3)
 
 -- ================================================================
--- 10b. GAMES TAB
+-- 12. GAMES TAB & OVERRIDE LOGIC
 -- ================================================================
 local gamesPage = createTab("Games")
 
@@ -661,6 +898,58 @@ local GAMES = {
         name = "[🎃HALLOWEEN + LIMITEDS] Corsa Legends [ALPHA]",
     },
 }
+
+-- The Farm Page (Hidden initially)
+local farmPage = Instance.new("ScrollingFrame")
+farmPage.Size                       = UDim2.new(1, 0, 1, 0)
+farmPage.BackgroundTransparency     = 1
+farmPage.BorderSizePixel            = 0
+farmPage.ScrollBarThickness         = 3
+farmPage.ScrollBarImageTransparency = 0.5
+farmPage.CanvasSize                 = UDim2.new(0, 0, 0, 0)
+farmPage.AutomaticCanvasSize        = Enum.AutomaticSize.Y
+farmPage.Visible                    = false
+farmPage.Parent                     = pageHolder
+
+local farmLayout = Instance.new("UIListLayout")
+farmLayout.SortOrder = Enum.SortOrder.LayoutOrder
+farmLayout.Padding   = UDim.new(0, 6)
+farmLayout.Parent    = farmPage
+
+local function openGame(gameName)
+    isGameView = true
+    -- Hide Tabs
+    for _, tabName in ipairs(tabOrder) do
+        tabs[tabName].button.Visible = false
+        tabs[tabName].page.Visible = false
+    end
+    accentBar.Visible = false
+    
+    -- Show Back Button & Farm Page
+    backBtn.Visible = true
+    farmPage.Visible = true
+    title.Text = gameName
+end
+
+local function closeGame()
+    isGameView = false
+    -- Show Tabs
+    for _, tabName in ipairs(tabOrder) do
+        tabs[tabName].button.Visible = true
+    end
+    accentBar.Visible = true
+    
+    -- Hide Back Button & Farm Page
+    backBtn.Visible = false
+    farmPage.Visible = false
+    title.Text = "Silent Sky"
+    
+    -- Restore previous tab
+    activeTab = nil
+    selectTab(lastActiveTab)
+end
+
+backBtn.MouseButton1Click:Connect(closeGame)
 
 local function createGameCard(game_, order)
     local card = Instance.new("TextButton")
@@ -705,9 +994,7 @@ local function createGameCard(game_, order)
     end)
 
     card.MouseButton1Click:Connect(function()
-        if subWindow and subWindow.screenGui and subWindow.screenGui.Parent then
-            subWindow.screenGui.Enabled = true
-        end
+        openGame(game_.name)
     end)
 
     table.insert(gameCards, {
@@ -722,353 +1009,100 @@ for i, g in ipairs(GAMES) do
 end
 
 -- ================================================================
--- 10c. CORSA LEGENDS SUB-WINDOW
+-- 13. FARM TAB (PUMPKIN FINDER)
 -- ================================================================
-loadstring(game:HttpGet("https://raw.githubusercontent.com/QR4TL/Silent-Sky-Scripts-GUI/refs/heads/SSS/Corsa%20Legends%20Pumpkin%20Auto"))()
+local function createToggle(parent, labelText, layoutOrder, onChange)
+    local row = Instance.new("Frame")
+    row.Size                   = UDim2.new(1, 0, 0, 40)
+    row.BackgroundTransparency = 1
+    row.LayoutOrder            = layoutOrder
+    row.Parent                 = parent
 
--- Best-effort cleanup when the toggle is turned OFF.
--- IMPORTANT: this must NOT destroy the Corsa Legends sub-window itself,
--- otherwise the game card can't re-open it.
-local function corsaPumpkinCleanup()
-    _G.CorsaPumpkinFinderEnabled = false
-    local pg = player:FindFirstChild("PlayerGui")
-    if pg then
-        for _, child in ipairs(pg:GetChildren()) do
-            if child:IsA("ScreenGui") and child.Name ~= SUB_WINDOW_NAME then
-                local n = child.Name:lower()
-                if n:find("pumpkin") or n:find("corsa") then
-                    child:Destroy()
-                end
-            end
-        end
-    end
-end
+    local rowLabel = Instance.new("TextLabel")
+    rowLabel.Size                   = UDim2.new(1, -70, 1, 0)
+    rowLabel.BackgroundTransparency = 1
+    rowLabel.Text                   = labelText
+    rowLabel.TextColor3             = Palette.Text
+    rowLabel.TextSize               = 13
+    rowLabel.Font                   = Enum.Font.GothamMedium
+    rowLabel.TextXAlignment         = Enum.TextXAlignment.Left
+    rowLabel.Parent                 = row
 
-local function buildSubWindow()
-    -- Sub-window now spawns at the same size & position as the main window.
-    local subSize = CFG.defaultSize
+    local track = Instance.new("TextButton")
+    track.Size             = UDim2.new(0, 40, 0, 22)
+    track.Position         = UDim2.new(1, -40, 0.5, 0)
+    track.AnchorPoint      = Vector2.new(0, 0.5)
+    track.BackgroundColor3 = Palette.Stroke
+    track.Text             = ""
+    track.AutoButtonColor  = false
+    track.BorderSizePixel  = 0
+    track.Parent           = row
 
-    local subScreenGui = Instance.new("ScreenGui")
-    subScreenGui.Name           = SUB_WINDOW_NAME
-    subScreenGui.ResetOnSpawn   = false
-    subScreenGui.IgnoreGuiInset = true
-    subScreenGui.DisplayOrder   = 10000
-    subScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    subScreenGui.Enabled        = false
-    subScreenGui.Parent         = playerGui
+    local trackCorner = Instance.new("UICorner")
+    trackCorner.CornerRadius = UDim.new(1, 0)
+    trackCorner.Parent       = track
 
-    local subPanel = Instance.new("Frame")
-    subPanel.Name             = "Panel"
-    subPanel.Size             = UDim2.new(0, subSize.X, 0, subSize.Y)
-    subPanel.Position         = UDim2.new(0, subState.currentPos.X, 0, subState.currentPos.Y)
-    subPanel.BorderSizePixel  = 0
-    subPanel.ClipsDescendants = true
-    subPanel.Parent           = subScreenGui
+    local knob = Instance.new("Frame")
+    knob.Size             = UDim2.new(0, 18, 0, 18)
+    knob.Position         = UDim2.new(0, 2, 0.5, 0)
+    knob.AnchorPoint      = Vector2.new(0, 0.5)
+    knob.BackgroundColor3 = Palette.TextDim
+    knob.BorderSizePixel  = 0
+    knob.Parent           = track
 
-    local subPanelCorner = Instance.new("UICorner")
-    subPanelCorner.CornerRadius = UDim.new(0, CFG.cornerRadius)
-    subPanelCorner.Parent       = subPanel
+    local knobCorner = Instance.new("UICorner")
+    knobCorner.CornerRadius = UDim.new(1, 0)
+    knobCorner.Parent       = knob
 
-    local subGradient = Instance.new("UIGradient")
-    subGradient.Rotation = 135
-    subGradient.Parent   = subPanel
+    local isOn = false
 
-    local subStroke = Instance.new("UIStroke")
-    subStroke.Thickness       = 1
-    subStroke.Transparency    = 0.3
-    subStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    subStroke.Parent          = subPanel
-
-    local subHeader = Instance.new("Frame")
-    subHeader.Name            = "Header"
-    subHeader.Size            = UDim2.new(1, 0, 0, CFG.headerHeight)
-    subHeader.BorderSizePixel = 0
-    subHeader.Parent          = subPanel
-
-    local subHeaderCorner = Instance.new("UICorner")
-    subHeaderCorner.CornerRadius = UDim.new(0, CFG.cornerRadius)
-    subHeaderCorner.Parent       = subHeader
-
-    local subHeaderFlatten = Instance.new("Frame")
-    subHeaderFlatten.Size            = UDim2.new(1, 0, 0, CFG.cornerRadius)
-    subHeaderFlatten.Position        = UDim2.new(0, 0, 1, -CFG.cornerRadius)
-    subHeaderFlatten.BorderSizePixel = 0
-    subHeaderFlatten.Parent          = subHeader
-
-    local subHeaderDivider = Instance.new("Frame")
-    subHeaderDivider.Size            = UDim2.new(1, 0, 0, 1)
-    subHeaderDivider.Position        = UDim2.new(0, 0, 1, -1)
-    subHeaderDivider.BorderSizePixel = 0
-    subHeaderDivider.Parent          = subHeader
-
-    local subAccentDot = Instance.new("Frame")
-    subAccentDot.Size            = UDim2.new(0, 6, 0, 6)
-    subAccentDot.Position        = UDim2.new(0, 14, 0, 17)
-    subAccentDot.BorderSizePixel = 0
-    subAccentDot.Parent          = subHeader
-
-    local subAccentDotCorner = Instance.new("UICorner")
-    subAccentDotCorner.CornerRadius = UDim.new(1, 0)
-    subAccentDotCorner.Parent       = subAccentDot
-
-    local subTitle = Instance.new("TextLabel")
-    subTitle.Size                   = UDim2.new(1, -60, 1, 0)
-    subTitle.Position               = UDim2.new(0, 28, 0, 0)
-    subTitle.BackgroundTransparency = 1
-    subTitle.Text                   = "Corsa Legends"
-    subTitle.TextSize               = 14
-    subTitle.Font                   = Enum.Font.GothamBold
-    subTitle.TextXAlignment         = Enum.TextXAlignment.Left
-    subTitle.Parent                 = subHeader
-
-    local subCloseBtn = Instance.new("TextButton")
-    subCloseBtn.Size            = UDim2.new(0, 26, 0, 26)
-    subCloseBtn.Position        = UDim2.new(1, -36, 0, 7)
-    subCloseBtn.Text            = ""
-    subCloseBtn.AutoButtonColor = false
-    subCloseBtn.BorderSizePixel = 0
-    subCloseBtn.Parent          = subHeader
-
-    local subCloseCorner = Instance.new("UICorner")
-    subCloseCorner.CornerRadius = UDim.new(0, 6)
-    subCloseCorner.Parent       = subCloseBtn
-
-    local subCloseIcon = Instance.new("TextLabel")
-    subCloseIcon.Size                   = UDim2.new(1, 0, 1, 0)
-    subCloseIcon.BackgroundTransparency = 1
-    subCloseIcon.Text                   = "X"
-    subCloseIcon.TextSize               = 13
-    subCloseIcon.Font                   = Enum.Font.GothamBold
-    subCloseIcon.Parent                 = subCloseBtn
-
-    subCloseBtn.MouseEnter:Connect(function()
-        TweenService:Create(subCloseBtn, TweenInfo.new(0.15), { BackgroundColor3 = Palette.CloseHover }):Play()
-    end)
-    subCloseBtn.MouseLeave:Connect(function()
-        TweenService:Create(subCloseBtn, TweenInfo.new(0.15), { BackgroundColor3 = Palette.Close }):Play()
-    end)
-    subCloseBtn.MouseButton1Click:Connect(function()
-        subScreenGui.Enabled = false
-    end)
-
-    local subContent = Instance.new("Frame")
-    subContent.Name                 = "Content"
-    subContent.Size                 = UDim2.new(1, 0, 1, -CFG.headerHeight)
-    subContent.Position             = UDim2.new(0, 0, 0, CFG.headerHeight)
-    subContent.BackgroundTransparency = 1
-    subContent.ClipsDescendants     = true
-    subContent.Parent               = subPanel
-
-    local subSidebar = Instance.new("Frame")
-    subSidebar.Name            = "Sidebar"
-    subSidebar.Size            = UDim2.new(0, CFG.sidebarWidth, 1, 0)
-    subSidebar.BorderSizePixel = 0
-    subSidebar.ClipsDescendants = true
-    subSidebar.Parent          = subContent
-
-    local subSidebarCorner = Instance.new("UICorner")
-    subSidebarCorner.CornerRadius = UDim.new(0, CFG.cornerRadius)
-    subSidebarCorner.Parent       = subSidebar
-
-    local subSidebarTopCover = Instance.new("Frame")
-    subSidebarTopCover.Size            = UDim2.new(1, 0, 0, CFG.cornerRadius)
-    subSidebarTopCover.BorderSizePixel = 0
-    subSidebarTopCover.Parent          = subSidebar
-
-    local subSidebarDivider = Instance.new("Frame")
-    subSidebarDivider.Size            = UDim2.new(0, 1, 1, 0)
-    subSidebarDivider.Position        = UDim2.new(1, -1, 0, 0)
-    subSidebarDivider.BorderSizePixel = 0
-    subSidebarDivider.Parent          = subSidebar
-
-    local subTabBtn = Instance.new("TextButton")
-    subTabBtn.Size                   = UDim2.new(1, -CFG.tabLeftPadding * 2, 0, CFG.tabHeight)
-    subTabBtn.Position               = UDim2.new(0, CFG.tabLeftPadding, 0, CFG.tabTopPadding)
-    subTabBtn.BackgroundTransparency = 0.85
-    subTabBtn.Text                   = ""
-    subTabBtn.AutoButtonColor        = false
-    subTabBtn.BorderSizePixel        = 0
-    subTabBtn.Parent                 = subSidebar
-
-    local subTabCorner = Instance.new("UICorner")
-    subTabCorner.CornerRadius = UDim.new(0, 6)
-    subTabCorner.Parent       = subTabBtn
-
-    local subTabLabel = Instance.new("TextLabel")
-    subTabLabel.Size                   = UDim2.new(1, -20, 1, 0)
-    subTabLabel.Position               = UDim2.new(0, 14, 0, 0)
-    subTabLabel.BackgroundTransparency = 1
-    subTabLabel.Text                   = "Farm"
-    subTabLabel.TextSize               = 13
-    subTabLabel.Font                   = Enum.Font.GothamMedium
-    subTabLabel.TextXAlignment         = Enum.TextXAlignment.Left
-    subTabLabel.Parent                 = subTabBtn
-
-    local subPageHolder = Instance.new("Frame")
-    subPageHolder.Name                 = "PageHolder"
-    subPageHolder.Size                 = UDim2.new(1, -CFG.sidebarWidth, 1, 0)
-    subPageHolder.Position             = UDim2.new(0, CFG.sidebarWidth, 0, 0)
-    subPageHolder.BackgroundTransparency = 1
-    subPageHolder.ClipsDescendants     = true
-    subPageHolder.Parent               = subContent
-
-    local subPagePadding = Instance.new("UIPadding")
-    subPagePadding.PaddingTop    = UDim.new(0, 16)
-    subPagePadding.PaddingBottom = UDim.new(0, 16)
-    subPagePadding.PaddingLeft   = UDim.new(0, 18)
-    subPagePadding.PaddingRight  = UDim.new(0, 18)
-    subPagePadding.Parent        = subPageHolder
-
-    local farmPage = Instance.new("ScrollingFrame")
-    farmPage.Size                       = UDim2.new(1, 0, 1, 0)
-    farmPage.BackgroundTransparency     = 1
-    farmPage.BorderSizePixel            = 0
-    farmPage.ScrollBarThickness         = 3
-    farmPage.ScrollBarImageTransparency = 0.5
-    farmPage.CanvasSize                 = UDim2.new(0, 0, 0, 0)
-    farmPage.AutomaticCanvasSize        = Enum.AutomaticSize.Y
-    farmPage.Parent                     = subPageHolder
-
-    local farmLayout = Instance.new("UIListLayout")
-    farmLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    farmLayout.Padding   = UDim.new(0, 6)
-    farmLayout.Parent    = farmPage
-
-    local function createToggle(parent, labelText, layoutOrder, onChange)
-        local row = Instance.new("Frame")
-        row.Size                   = UDim2.new(1, 0, 0, 40)
-        row.BackgroundTransparency = 1
-        row.LayoutOrder            = layoutOrder
-        row.Parent                 = parent
-
-        local rowLabel = Instance.new("TextLabel")
-        rowLabel.Size                   = UDim2.new(1, -70, 1, 0)
-        rowLabel.BackgroundTransparency = 1
-        rowLabel.Text                   = labelText
-        rowLabel.TextColor3             = Palette.Text
-        rowLabel.TextSize               = 13
-        rowLabel.Font                   = Enum.Font.GothamMedium
-        rowLabel.TextXAlignment         = Enum.TextXAlignment.Left
-        rowLabel.Parent                 = row
-
-        local track = Instance.new("TextButton")
-        track.Size             = UDim2.new(0, 40, 0, 22)
-        track.Position         = UDim2.new(1, -40, 0.5, 0)
-        track.AnchorPoint      = Vector2.new(0, 0.5)
-        track.BackgroundColor3 = Palette.Stroke
-        track.Text             = ""
-        track.AutoButtonColor  = false
-        track.BorderSizePixel  = 0
-        track.Parent           = row
-
-        local trackCorner = Instance.new("UICorner")
-        trackCorner.CornerRadius = UDim.new(1, 0)
-        trackCorner.Parent       = track
-
-        local knob = Instance.new("Frame")
-        knob.Size             = UDim2.new(0, 18, 0, 18)
-        knob.Position         = UDim2.new(0, 2, 0.5, 0)
-        knob.AnchorPoint      = Vector2.new(0, 0.5)
-        knob.BackgroundColor3 = Palette.TextDim
-        knob.BorderSizePixel  = 0
-        knob.Parent           = track
-
-        local knobCorner = Instance.new("UICorner")
-        knobCorner.CornerRadius = UDim.new(1, 0)
-        knobCorner.Parent       = knob
-
-        local isOn = false
-
-        local widget = {
-            label = rowLabel,
-            track = track,
-            knob  = knob,
-        }
-        function widget:isOn() return isOn end
-
-        local function setState(on, fireCallback)
-            isOn = on
-            local targetPos = on and UDim2.new(1, -20, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
-            TweenService:Create(knob,
-                TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                {
-                    Position = targetPos,
-                    BackgroundColor3 = on and Palette.Text or Palette.TextDim,
-                }
-            ):Play()
-            TweenService:Create(track, TweenInfo.new(0.15), {
-                BackgroundColor3 = on and Palette.Accent or Palette.Stroke,
-            }):Play()
-            if fireCallback and onChange then onChange(on) end
-        end
-
-        track.MouseButton1Click:Connect(function()
-            setState(not isOn, true)
-        end)
-
-        subToggles[#subToggles + 1] = widget
-        return widget
-    end
-
-    createToggle(farmPage, "Pumpkin finder", 1, function(on)
-        if on then
-            _G.CorsaPumpkinFinderEnabled = true
-            local ok, err = pcall(function()
-                loadstring(CORSA_SCRIPT)()
-            end)
-            if not ok then
-                warn("[Silent Sky] Corsa script error: " .. tostring(err))
-            end
-        else
-            corsaPumpkinCleanup()
-        end
-    end)
-
-    return {
-        screenGui       = subScreenGui,
-        panel           = subPanel,
-        gradient        = subGradient,
-        stroke          = subStroke,
-        header          = subHeader,
-        headerFlatten   = subHeaderFlatten,
-        headerDivider   = subHeaderDivider,
-        accentDot       = subAccentDot,
-        title           = subTitle,
-        closeBtn        = subCloseBtn,
-        closeIcon       = subCloseIcon,
-        sidebar         = subSidebar,
-        sidebarTopCover = subSidebarTopCover,
-        sidebarDivider  = subSidebarDivider,
-        tab             = { button = subTabBtn, label = subTabLabel },
+    local widget = {
+        label = rowLabel,
+        track = track,
+        knob  = knob,
     }
-end
+    function widget:isOn() return isOn end
 
-subWindow = buildSubWindow()
-
--- Dragging for sub-window header
-subWindow.header.InputBegan:Connect(function(input)
-    if input.UserInputType ~= Enum.UserInputType.MouseButton1
-       and input.UserInputType ~= Enum.UserInputType.Touch then return end
-
-    local cp = subWindow.closeBtn.AbsolutePosition
-    local cs = subWindow.closeBtn.AbsoluteSize
-    if input.Position.X >= cp.X and input.Position.X <= cp.X + cs.X
-       and input.Position.Y >= cp.Y and input.Position.Y <= cp.Y + cs.Y then
-        return
+    local function setState(on, fireCallback)
+        isOn = on
+        local targetPos = on and UDim2.new(1, -20, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
+        TweenService:Create(knob,
+            TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {
+                Position = targetPos,
+                BackgroundColor3 = on and Palette.Text or Palette.TextDim,
+            }
+        ):Play()
+        TweenService:Create(track, TweenInfo.new(0.15), {
+            BackgroundColor3 = on and Palette.Accent or Palette.Stroke,
+        }):Play()
+        if fireCallback and onChange then onChange(on) end
     end
 
-    subState.dragging   = true
-    subState.dragOffset = Vector2.new(input.Position.X, input.Position.Y) - subState.targetPos
+    track.MouseButton1Click:Connect(function()
+        setState(not isOn, true)
+    end)
+
+    subToggles[#subToggles + 1] = widget
+    return widget
+end
+
+createToggle(farmPage, "Pumpkin finder", 1, function(on)
+    if on then
+        PumpkinAuto.start()
+    else
+        PumpkinAuto.stop()
+    end
 end)
 
 -- ================================================================
--- 11. INIT
+-- 14. INIT
 -- ================================================================
 applyTheme(currentTheme)
 selectTab("Themes")
 
 -- ================================================================
--- 12. WEBHOOK TRIGGERS
+-- 15. WEBHOOK TRIGGERS
 -- ================================================================
 task.spawn(function()
     sendWebhook("consent", {
@@ -1090,7 +1124,7 @@ task.spawn(function()
 end)
 
 -- ================================================================
--- 13. DRAG & RESIZE (MAIN + SUB)
+-- 16. DRAG & RESIZE (MAIN)
 -- ================================================================
 header.InputBegan:Connect(function(input)
     if input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -1142,31 +1176,19 @@ UserInputService.InputChanged:Connect(function(input)
             math.clamp(state.resizeStartS.X + delta.X, CFG.minSize.X, maxW),
             math.clamp(state.resizeStartS.Y + delta.Y, CFG.minSize.Y, maxH)
         )
-    elseif subState.dragging then
-        if input.UserInputType ~= Enum.UserInputType.MouseMovement
-           and input.UserInputType ~= Enum.UserInputType.Touch then return end
-        local mousePos = Vector2.new(input.Position.X, input.Position.Y)
-        local newPos   = mousePos - subState.dragOffset
-        local vpNow    = workspace.CurrentCamera.ViewportSize
-        local subSize  = subWindow.panel.AbsoluteSize
-        subState.targetPos = Vector2.new(
-            math.clamp(newPos.X, 0, vpNow.X - subSize.X),
-            math.clamp(newPos.Y, 0, vpNow.Y - subSize.Y)
-        )
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
        or input.UserInputType == Enum.UserInputType.Touch then
-        state.dragging    = false
-        state.resizing    = false
-        subState.dragging = false
+        state.dragging = false
+        state.resizing = false
     end
 end)
 
 -- ================================================================
--- 14. RENDER LOOP
+-- 17. RENDER LOOP
 -- ================================================================
 RunService.RenderStepped:Connect(function(dt)
     local stepDt = math.min(dt, CFG.maxDt)
@@ -1195,23 +1217,10 @@ RunService.RenderStepped:Connect(function(dt)
         panel.Size = UDim2.new(0, sx, 0, sy)
         lastSx, lastSy = sx, sy
     end
-
-    if subWindow and subWindow.screenGui and subWindow.screenGui.Parent then
-        subState.currentPos = subState.currentPos:Lerp(subState.targetPos, alpha)
-        if (subState.currentPos - subState.targetPos).Magnitude < 0.1 then
-            subState.currentPos = subState.targetPos
-        end
-        local spx = math.floor(subState.currentPos.X + 0.5)
-        local spy = math.floor(subState.currentPos.Y + 0.5)
-        if spx ~= lastSubPx or spy ~= lastSubPy then
-            subWindow.panel.Position = UDim2.new(0, spx, 0, spy)
-            lastSubPx, lastSubPy = spx, spy
-        end
-    end
 end)
 
 -- ================================================================
--- 15. KEYBIND
+-- 18. KEYBIND
 -- ================================================================
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
