@@ -1,0 +1,109 @@
+--// Auto Pumpkin Collector
+--// Game: [🎃HALLOWEEN + LIMITEDS] Corsa Legends [ALPHA]
+--// Remote: ReplicatedStorage.Remotes.HalloweenPumpkinCollect
+--// Signature: FireServer(pumpkinName :: string)
+
+local Players            = game:GetService("Players")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+
+local LocalPlayer = Players.LocalPlayer
+
+-- ── Config ────────────────────────────────────────────────
+local CONFIG = {
+    Teleport      = true,   -- move HRP to each pumpkin (needed if server validates distance)
+    HeightOffset  = 5,      -- studs above the pumpkin to hover
+    FireDelay     = 0.35,   -- must be > 0.3 (client throttle)
+    RetryDelay    = 0.15,
+    RescanDelay   = 0.5,    -- when folder is empty
+    FolderTimeout = 30,
+}
+-- ──────────────────────────────────────────────────────────
+
+local Remotes = ReplicatedStorage:WaitForChild("Remotes", CONFIG.FolderTimeout)
+assert(Remotes, "Remotes folder not found")
+
+local HalloweenPumpkinCollect = Remotes:WaitForChild("HalloweenPumpkinCollect", CONFIG.FolderTimeout)
+assert(HalloweenPumpkinCollect, "HalloweenPumpkinCollect remote not found")
+
+local running = true
+
+-- Utils ───────────────────────────────────────────────────
+local function getHRP()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getPumpkinFolder()
+    return workspace:FindFirstChild("HalloweenPumpkins")
+        or workspace:WaitForChild("HalloweenPumpkins", CONFIG.FolderTimeout)
+end
+
+local function teleportTo(pos)
+    local hrp = getHRP()
+    if not hrp then return false end
+    local ok = pcall(function()
+        hrp.CFrame = CFrame.new(pos + Vector3.new(0, CONFIG.HeightOffset, 0))
+    end)
+    return ok
+end
+
+local function fireRemote(name)
+    local ok, err = pcall(function()
+        HalloweenPumpkinCollect:FireServer(name)
+    end)
+    if not ok then
+        warn("[AutoPumpkin] FireServer failed:", err)
+    end
+    return ok
+end
+
+-- Main loop ───────────────────────────────────────────────
+local function collectLoop()
+    while running do
+        local folder = getPumpkinFolder()
+        if not folder then
+            task.wait(1)
+            continue
+        end
+
+        local pumpkins = {}
+        for _, child in ipairs(folder:GetChildren()) do
+            if child:IsA("Model") then
+                table.insert(pumpkins, child)
+            end
+        end
+
+        if #pumpkins == 0 then
+            task.wait(CONFIG.RescanDelay)
+            continue
+        end
+
+        for _, pumpkin in ipairs(pumpkins) do
+            if not running then break end
+            if not pumpkin.Parent then continue end -- already collected
+
+            local name = pumpkin.Name
+            local pos  = pumpkin:GetPivot().Position
+
+            if CONFIG.Teleport then
+                teleportTo(pos)
+                task.wait(0.08) -- let CFrame replicate + character settle
+            end
+
+            fireRemote(name)
+            task.wait(CONFIG.FireDelay)
+
+            -- one retry if the pumpkin is still there
+            if pumpkin.Parent and running then
+                task.wait(CONFIG.RetryDelay)
+                if pumpkin.Parent then
+                    fireRemote(name)
+                    task.wait(CONFIG.FireDelay)
+                end
+            end
+        end
+    end
+end
+
+task.spawn(collectLoop)
+print("[AutoPumpkin] Running. Set `running = false` to stop.")
